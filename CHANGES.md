@@ -1,5 +1,8 @@
+TODO
+====
+
 GENERAL
-=======
+-------
 * battery monitor - make needle wobble when battery low
 * Proper SD card handling
 * Allow short rest stuff to get reset on long rest, too
@@ -12,22 +15,22 @@ Proper error handling
 Rotary still misses steps, particularly if it's spun quickly - needs checking with scope
 
 img
-===
+---
 Fonts
 
 character.py
-============
+------------
 On save, update individual lines rather than rewriting entire file.  To preserve formatting and comments
 Way of communicating error in load()
 implement die()
 
 menu.py
-=======
+-------
 OLED tells you what you're selecting on the matrix, plus curr/max
 Option to scroll faster when adjusting a large number
 
 gadget.py
-=========
+---------
 Reduce need for menu objects to know about char, etc.
 
 
