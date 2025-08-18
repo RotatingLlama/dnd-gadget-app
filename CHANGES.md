@@ -1,7 +1,6 @@
 GENERAL
 =======
 * battery monitor - make needle wobble when battery low
-* Play screen background image support
 * Proper SD card handling
 * Allow short rest stuff to get reset on long rest, too
 Way to skip character select screen and just go to last played
@@ -38,6 +37,7 @@ Gadget v0.3
 * Hit dice:
   - Now reset correctly on long rest
   - Are now spendable on short rest, but can't be incremented except by long rest
+* Improved Play Screen layout and added background image support (background.2ink)
 * Added brightness control for matrix
 * Renamed UI to HAL
   - ui.py is now hal.py

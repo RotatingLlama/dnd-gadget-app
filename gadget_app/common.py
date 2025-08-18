@@ -1,7 +1,7 @@
 # Misc common data and code
 #
 # T. Lloyd
-# 21 Jul 2025
+# 18 Aug 2025
 
 from micropython import const
 import asyncio
@@ -13,6 +13,7 @@ SD_DIR = const('TTRPG')
 CHAR_SUBDIR = const('Characters')
 CHAR_STATS = const('stats.txt')
 CHAR_HEAD = const('head.2ink')
+CHAR_BG = const('background.2ink')
 
 # As soon as this class is touch()'d, it will begin counting down to execute callback()
 # If it's touch()ed again during the countdown, the countdown resets

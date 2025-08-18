@@ -1,7 +1,7 @@
 # Functions for dealing with .2ink files
 #
 # T. Lloyd
-# 11 Jul 2025
+# 18 Aug 2025
 
 # Standard libs
 from struct import unpack, pack
@@ -191,6 +191,9 @@ def load_into( buf, filename ):
   # Rearrange the pixel order to suit GS2_HMSB format
   #swap_pixel_order(buf)
   
+  # Replace transparency with white (otherwise it shows up as red)
+  _replace_colour( buf, 3, 0 )
+  
   return framebuf.FB(
     buf,
     head[2], # width
@@ -198,6 +201,49 @@ def load_into( buf, filename ):
     b2f[head[4]] # format
   )
 
+# Takes a raw buffer, and optionally a pair of integer colours
+# Finds all instances of old colour and replaces it with new colour
+# By default, replaces 3 (transparent) with 0 (white)
+@micropython.viper
+def _replace_colour( buf, old:int=3, new:int=0 ):
+  bf = ptr8(buf)
+  c1 = ptr8(bytes(( old<<6, old<<4, old<<2, old, )))
+  c2 = ptr8(bytes(( new<<6, new<<4, new<<2, new, )))
+  b = ptr8(bytearray(2))
+  
+  i = int(0)
+  z = int(len(buf))
+  while i < z:
+    
+    # Reset
+    b[0] = 0x00 # Blit
+    b[1] = 0xff # Mask
+    
+    # Detect c1 in all 4 positions.  If found:
+    # Set blit b[0] to c2 in that position
+    # Set mask b[1] to 0s in that position
+    if ( bf[i] & 0xc0 ) == c1[0]:
+      b[0] |= c2[0]
+      b[1] &= 0x3f # 00 11 11 11
+    if ( bf[i] & 0x30 ) == c1[1]:
+      b[0] |= c2[1]
+      b[1] &= 0xcf # 11 00 11 00
+    if ( bf[i] & 0x0c ) == c1[2]:
+      b[0] |= c2[2]
+      b[1] &= 0xf3 # 11 11 00 11
+    if ( bf[i] & 0x03 ) == c1[3]:
+      b[0] |= c2[3]
+      b[1] &= 0xfc # 11 11 11 00
+    
+    # AND the byte with the mask; masked areas are now all 0s
+    bf[i] &= b[1]
+    
+    # OR the byte with the blit
+    bf[i] |= b[0]
+    
+    i += 1
+    
+  
 # We can define these as const because we only accept bpp = 2
 # bits per pixel
 sbpp = const(2)

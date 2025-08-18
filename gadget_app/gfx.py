@@ -1,7 +1,7 @@
 # Drawing functions
 #
 # T. Lloyd
-# 15 Aug 2025
+# 18 Aug 2025
 
 # Standard libraries
 import micropython
@@ -15,7 +15,7 @@ from framebuf import FrameBuffer, MONO_HLSB, GS2_HMSB
 
 # Our libraries
 import img
-from .common import CHAR_HEAD
+from .common import CHAR_HEAD, CHAR_BG
 
 # ASSETS
 IMG_CHOOSE_W = const('/assets/choose_w.2ink')
@@ -475,7 +475,12 @@ def draw_play_screen( fb, char ):
   hp = stats['hp']
   head = char.dir / CHAR_HEAD
   
-  fb.fill(0)
+  # Character-specific background
+  bg = char.dir / CHAR_BG
+  if bg.is_file():
+    img.load_into( fb.buf, str(bg) )
+  else:
+    fb.fill(0)
   
   ### CHARACTER HEAD ###
   if head.is_file():
