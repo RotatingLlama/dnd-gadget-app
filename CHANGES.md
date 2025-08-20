@@ -3,7 +3,10 @@ TODO
 
 GENERAL
 -------
-* battery monitor - make needle wobble when battery low
+* battery monitor
+ - make needle wobble when battery low.
+ - Display low battery graphic on e-ink.
+ - Check that battery-die routines work
 * Proper SD card handling
 * Allow short rest stuff to get reset on long rest, too
 Way to skip character select screen and just go to last played
