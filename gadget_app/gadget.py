@@ -2,7 +2,7 @@
 # For Micropython v1.24
 #
 # T. Lloyd
-# 27 Jul 2025
+# 21 Aug 2025
 
 
 # TO USE:
@@ -501,7 +501,11 @@ class Gadget:
   async def main_sequence(self):
     
     # Battery protection
-    bp = asyncio.create_task( self._shutdown_batt() )
+    bp = asyncio.create_task(asyncio.gather(
+      self._shutdown_batt(),
+      #self._battery_charge_waiter(),
+      self._battery_low_waiter(),
+    ))
     
     # Oled idle stuff
     self._oled_idle = set()
@@ -521,6 +525,43 @@ class Gadget:
     print('Main loop done, waiting...')
     await self._exit_loop.wait()
     print('Exiting.  Adios!')
+  
+  # Reacts to the "battery charging" status changing (currently empty)
+  async def _battery_charge_waiter(self):
+    while True:
+      
+      await self.hal.batt_charge.wait()
+      
+      await self.hal.batt_discharge.wait()
+  
+  # Reacts to "battery low" condition
+  async def _battery_low_waiter(self):
+    while True:
+      
+      # Wait for the battery to go low
+      await self.hal.batt_low.wait()
+      
+      # Display a warning on the eink
+      if self.character is not None: # Currently only have a way to redraw the play screen
+        self.character.draw_eink()
+        print('eink redraw triggered by _battery_low_waiter()')
+      
+      # Wobble the needle
+      self.hal.needle.wobble(True)
+      
+      # Wait for the battery to start charging
+      await self.hal.batt_charge.wait()
+      
+      # Remove the warning on the eink
+      if self.character is not None: # Currently only have a way to redraw the play screen
+        self.character.draw_eink()
+        print('eink redraw triggered by _battery_low_waiter()')
+      
+      # Stop wobbling the needle
+      self.hal.needle.wobble(False)
+      
+      # Wait for the battery to stop charging before looking again at its level
+      await self.hal.batt_discharge.wait()
   
   # Waits for _shutdown event and tidies everything up
   # Sets the _exit_loop event
@@ -568,7 +609,7 @@ class Gadget:
   # Turns everything off
   # Sets the _exit_loop event
   async def _shutdown_batt(self):
-    await self.hal.hw.empty_battery.wait()
+    await self.hal.batt_empty.wait()
     
     self.phase_exit.set()
     

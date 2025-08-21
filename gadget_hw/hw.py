@@ -2,7 +2,7 @@
 # Some original code in einktest.py
 #
 # T. Lloyd
-# 15 Aug 2025
+# 21 Aug 2025
 
 # Standard libraries
 from machine import I2C, SPI, ADC, PWM, Pin
@@ -36,8 +36,9 @@ NEEDLE_DEF_DUTY = const(1)
 #   x 3 scales up to the top of the voltage divider (to V_SYS)
 #   Expect it to be a bit below 5v on USB due to presence of MBR120VLSFT1G Schottky (Vf=340 mV)
 VSYS_MULTIPLIER = const(0.0001510643) # ( 3.3 * 3 ) / 65535
-VSYS_HYST_VALUE = const(0.06) # Hysteresis voltage
+VSYS_HYST_VALUE = const(0.1) # Hysteresis voltage - normally 0.6 is ok, but fluctuates more during eink refresh (0.0797 observed)
 BATT_MIN = const(3.5) # Consider this voltage (or less) to be 0%
+BATT_LOW = const(4.05) # 3.6 Battery is "low" below this voltage (about 14%)
 BATT_MAX = const(4.2) # Consider this voltage (or more) to be 100%
 BATT_USB = const(4.75) # If it's higher than this, assume we're plugged in
 
@@ -56,7 +57,13 @@ class HW:
     self._vsys = ADC(DEFS.VSYS)
     self._vsys_val:int = 0
     self._vsys_task = asyncio.create_task( self._vsys_hyst() )
+    self.low_battery = asyncio.Event()
+    self.ok_battery = asyncio.Event()
+    self.ok_battery.set()  # Need to have one of these set to begin with
     self.empty_battery = asyncio.Event()
+    self.battery_charging = asyncio.Event()
+    self.battery_discharging = asyncio.Event()
+    self.battery_discharging.set() # Need to have one of these set to begin with
     
     # Set up busses
     self.i2c = I2C( DEFS.I2C_ID, scl=DEFS.I2C_SCL, sda=DEFS.I2C_SDA, freq=DEFS.I2C_FREQ )
@@ -209,6 +216,7 @@ class HW:
     
     # Low battery value
     empty:int = BATT_MIN // VSYS_MULTIPLIER
+    low:int = BATT_LOW // VSYS_MULTIPLIER
     
     # Localisation
     adc = self._vsys.read_u16 # Function to get raw ADC value
@@ -235,7 +243,27 @@ class HW:
         if new < self._vsys_val: # and the value has dropped at all
           self._vsys_val = new # keep the new value
       
-      # Check the battery health
+      # Manage the dis/charging flags
+      if inc:
+        if self.battery_discharging.is_set():
+          self.battery_discharging.clear()
+          self.battery_charging.set()
+      else:
+        if self.battery_charging.is_set():
+          self.battery_charging.clear()
+          self.battery_discharging.set()
+      
+      # Manage the "low battery" flag
+      if new <= low:
+        if self.ok_battery.is_set():
+          self.ok_battery.clear()
+          self.low_battery.set()
+      else:
+        if self.low_battery.is_set():
+          self.low_battery.clear()
+          self.ok_battery.set()
+      
+      # Kick off the dead battery sequence
       if new <= empty:
         self.empty_battery.set()
         print('hw triggered battery shutdown at',new)

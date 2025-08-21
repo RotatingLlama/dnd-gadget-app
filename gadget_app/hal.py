@@ -2,7 +2,7 @@
 # Some original code in einktest.py
 #
 # T. Lloyd
-# 27 Jul 2025
+# 21 Aug 2025
 
 from micropython import const
 import asyncio
@@ -42,6 +42,11 @@ class HAL:
     
     # Pass these through
     self.batt_pc = self.hw.batt_pc
+    self.batt_ok = self.hw.ok_battery
+    self.batt_low = self.hw.low_battery
+    self.batt_charge = self.hw.battery_charging
+    self.batt_discharge = self.hw.battery_discharging
+    self.batt_empty = self.hw.empty_battery
     
     # Support for triggering eink update from non-async code
     self._update_eink = asyncio.ThreadSafeFlag()

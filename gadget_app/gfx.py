@@ -1,7 +1,7 @@
 # Drawing functions
 #
 # T. Lloyd
-# 18 Aug 2025
+# 21 Aug 2025
 
 # Standard libraries
 import micropython
@@ -21,6 +21,7 @@ from .common import CHAR_HEAD, CHAR_BG
 IMG_CHOOSE_W = const('/assets/choose_w.2ink')
 IMG_CHOOSE_R = const('/assets/choose_r.2ink')
 IMG_SKULL = const('/assets/skull.2ink')
+IMG_LOWBATT = const('/assets/low_batt.2ink')
 IMG_DEADBATT = const('/assets/deadbatt.2ink')
 
 # Universal constants
@@ -468,7 +469,7 @@ def needle_max_range(hp):
 # Draws the play screen to the given framebuffer
 # Expects 360x240 2bpp framebuffer
 # Needs stats dict from Character
-def draw_play_screen( fb, char ):
+def draw_play_screen( fb, char, lowbatt=False ):
   
   # Localisation
   stats = char.stats
@@ -483,12 +484,16 @@ def draw_play_screen( fb, char ):
     fb.fill(0)
   
   ### CHARACTER HEAD ###
-  if head.is_file():
+  if lowbatt:
     chs2 = CHAR_HEAD_SIZE//2
-    img.blit_onto( fb, X-chs2, TIT_MIDPOINT_Y-chs2, str( head ) )
+    img.blit_onto( fb, X-chs2, TIT_MIDPOINT_Y-chs2, IMG_LOWBATT )
   else:
-    fb.rect( X-1, TIT_MIDPOINT_Y-1, 3, 3, 2, True ) # dot
-    chs2 = 2
+    if head.is_file():
+      chs2 = CHAR_HEAD_SIZE//2
+      img.blit_onto( fb, X-chs2, TIT_MIDPOINT_Y-chs2, str( head ) )
+    else:
+      fb.rect( X-1, TIT_MIDPOINT_Y-1, 3, 3, 2, True ) # dot
+      chs2 = 2
   
   ######## TITLES ########
   

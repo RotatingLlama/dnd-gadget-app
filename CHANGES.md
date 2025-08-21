@@ -3,10 +3,6 @@ TODO
 
 GENERAL
 -------
-* battery monitor
- - make needle wobble when battery low.
- - Display low battery graphic on e-ink.
- - Check that battery-die routines work
 * Proper SD card handling
 * Allow short rest stuff to get reset on long rest, too
 Way to skip character select screen and just go to last played
@@ -40,11 +36,25 @@ Reduce need for menu objects to know about char, etc.
 
 Gadget v0.3
 ===========
+
+Gameplay Changes & Bugfixes
+----------------
 * Hit dice:
   - Now reset correctly on long rest
   - Are now spendable on short rest, but can't be incremented except by long rest
+* Fixed needle going to wrong place after long rest with temp hp
+* Fixed needle moving wrong way on damage
+
+Visible Changes
+---------------
 * Improved Play Screen layout and added background image support (background.2ink)
 * Added brightness control for matrix
+* Added battery monitor
+ - Needle now wobbles when battery is low and not charging.
+ - New low-battery graphic will display in place of character head.
+
+Invisible Changes
+-----------------
 * Renamed UI to HAL
   - ui.py is now hal.py
   - UI() is now HAL()
@@ -53,14 +63,12 @@ Gadget v0.3
   - Added more granular way of locking hardware features with hal.register() and unregister()
   - Added hal.needle object and wobble() method
 * Reworked main_sequence() as phase control, like wm project
-* Fixed needle going to wrong place after long rest with temp hp
 * hw.py
   - Replaced running average battery monitor used by voltage_stable() with hysteresis to better eliminate noise
   - Made _isr_rot() be Viper
 * character.py
   - Added short timeout before save, to allow multiple changes to aggregrate together
   - Removed show_all_hp()
-* gadget.py - Fixed needle moving wrong way on damage
 * menu.py
   - Added 'prompt' option to SimpleAdjuster, so prompt can be different from name in menu
   - Added absolute adjuster callback to SimpleAdjuster, to complement existing relative one

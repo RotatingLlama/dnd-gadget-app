@@ -1,7 +1,7 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 27 July 2025
+# 21 Aug 2025
 
 import asyncio
 import os
@@ -731,7 +731,8 @@ class Character:
       self.hal.mtx.update()
   
   def draw_eink(self,show=True):
-    gfx.draw_play_screen( fb=self.hal.eink, char=self )
+    lowbatt = self.hal.batt_low.is_set() and self.hal.batt_discharge.is_set()
+    gfx.draw_play_screen( fb=self.hal.eink, char=self, lowbatt=lowbatt )
     if show:
       self.hal.eink_send_refresh()
   
