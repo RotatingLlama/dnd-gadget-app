@@ -36,9 +36,9 @@ NEEDLE_DEF_DUTY = const(1)
 #   x 3 scales up to the top of the voltage divider (to V_SYS)
 #   Expect it to be a bit below 5v on USB due to presence of MBR120VLSFT1G Schottky (Vf=340 mV)
 VSYS_MULTIPLIER = const(0.0001510643) # ( 3.3 * 3 ) / 65535
-VSYS_HYST_VALUE = const(0.1) # Hysteresis voltage - normally 0.6 is ok, but fluctuates more during eink refresh (0.0797 observed)
+VSYS_HYST_VALUE = const(0.1) # Hysteresis voltage - normally 0.06 is ok, but fluctuates more during eink refresh (0.0797 observed)
 BATT_MIN = const(3.5) # Consider this voltage (or less) to be 0%
-BATT_LOW = const(4.05) # 3.6 Battery is "low" below this voltage (about 14%)
+BATT_LOW = const(3.6) # Battery is "low" below this voltage (about 14%)
 BATT_MAX = const(4.2) # Consider this voltage (or more) to be 100%
 BATT_USB = const(4.75) # If it's higher than this, assume we're plugged in
 
@@ -60,10 +60,10 @@ class HW:
     self.low_battery = asyncio.Event()
     self.ok_battery = asyncio.Event()
     self.ok_battery.set()  # Need to have one of these set to begin with
-    self.empty_battery = asyncio.Event()
     self.battery_charging = asyncio.Event()
     self.battery_discharging = asyncio.Event()
     self.battery_discharging.set() # Need to have one of these set to begin with
+    self.empty_battery = asyncio.Event()
     
     # Set up busses
     self.i2c = I2C( DEFS.I2C_ID, scl=DEFS.I2C_SCL, sda=DEFS.I2C_SDA, freq=DEFS.I2C_FREQ )
@@ -253,7 +253,7 @@ class HW:
           self.battery_charging.clear()
           self.battery_discharging.set()
       
-      # Manage the "low battery" flag
+      # Manage the low/ok battery flags
       if new <= low:
         if self.ok_battery.is_set():
           self.ok_battery.clear()
