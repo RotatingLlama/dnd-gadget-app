@@ -4,6 +4,14 @@ TODO
 GENERAL
 -------
 * Proper SD card handling
+  - sdcard.py reclocks the spi bus.  Make sure to time this suitably with rest of hw.py; at least tie the baudrate in with system baudrate
+  - Hardware switch is bouncy but detects card presence.  Implement software debounce (can be slow)
+  - os.umount(vfs) works correctly even if the underlying block device has gone away (assuming no pending writes?  Check MP vfs write() behaviour)
+  - At startup, mount if present.  If not present, do error thing
+  - On unplug, put warning on oled, and:
+    - In char select: prevent any selection
+    - In play screen: allow normal play, but defer saves until replug
+  - On replug, init card and reverse the above contingencies
 * Allow short rest stuff to get reset on long rest, too
 Way to skip character select screen and just go to last played
 Oled menu to blank out default stuff before drawing
