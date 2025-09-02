@@ -6,7 +6,12 @@ GENERAL
 * Proper SD card handling
   - sdcard.py reclocks the spi bus.  Make sure to time this suitably with rest of hw.py; at least tie the baudrate in with system baudrate
   - Hardware switch is bouncy but detects card presence.  Implement software debounce (can be slow)
+    - Record last accepted transition time
+    - If this transition is too soon after that, we're in a bounce so ignore
+    - Otherwise accept
   - os.umount(vfs) works correctly even if the underlying block device has gone away (assuming no pending writes?  Check MP vfs write() behaviour)
+    - MP vfs write() behaviour unclear, but filesystem can be dirty - that's what os.sync() is for
+    - Just make sure we call os.sync() after every save and random disconnects will be fine
   - At startup, mount if present.  If not present, do error thing
   - On unplug, put warning on oled, and:
     - In char select: prevent any selection
