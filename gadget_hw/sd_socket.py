@@ -1,116 +1,80 @@
-from . import sdcard
-import vfs
-from gc import collect
-from machine import disable_irq, enable_irq
-from time import sleep_ms
 
-# TODO:
-# Run deinit_card() on unplug
+# SD Socket class
+# Handles plug and unplug events
+# Sets up SD card automatically when plugged
+#
+# T. Lloyd
+# 03 Sep 2025
+
+from . import sdcard
+#import vfs
+#from gc import collect
+#from machine import disable_irq, enable_irq
+from time import ticks_ms, ticks_diff #, sleep_ms
+from micropython import const, schedule
+
+_DEBOUNCE_TIME = const(40) # In ms
 
 class SD_Socket:
   
-  def __init__( self, spi, cs, det ):
+  def __init__( self, spi, cs, det, baudrate=1320000, on_plug=lambda:None, on_unplug=lambda:None ):
     
-    self.spi = spi
-    self.cs = cs
-    self.det = det
-    self.det.init( mode=det.IN, pull=det.PULL_UP )
+    # Record
+    self._spi = spi
+    self._cs = cs
+    self._det = det
+    self._baud = baudrate
+    self._f_plug = lambda:None
+    self._f_unplug = lambda:None
     
-    # self.det is low when card is present, high when it's not
+    # Set up the detector pin
+    self._det.init( mode=det.IN, pull=det.PULL_UP )
+    self._det.irq( handler=self._isr_det, trigger=(det.IRQ_FALLING | det.IRQ_RISING) ) #, wake=None)#, hard=True )
     
-    self.card = None
-    self.vfs = None
+    # Last valid transition (of detector switch)
+    self._lvt = ticks_ms()
     
-    # IRQ stuff, debouncing
-    self.present = not self.det.value()
-    self.irq_state = 0
-    self.deinit_ref = self.deinit_card # Need to do this for the ISR to work
-    self.det.irq( handler=self._isr_det, trigger=(det.IRQ_FALLING | det.IRQ_RISING) )#, wake=None)#, hard=True )
+    # Need this for the ISR to work
+    self._plug_ref = self._plug 
     
-    # If there's a card, set it up now
-    if self.present:
-      self.init_card()
+    # Set things up without calling ther callbacks
+    self._plug(0)
     
+    # Set up the callbacks (if any)
+    self.init( on_plug, on_unplug )
   
-  def mount( self, *args, **kwargs ):
-    
-    # Sanity
-    if not self.present:
-      raise OSError('No card')
-    
-    # Make sure we're set up
-    if self.vfs is None:
-      self.init_card()
-    
-    # Do
-    vfs.mount ( self.vfs, *args, **kwargs )
+  # Called by the card detect ISR, handles plug/unplug events
+  def _plug(self,x) -> None:
+    if self.has_card():
+      self._init_card()
+      self._f_plug()
+    else:
+      self.card = None
+      self._f_unplug()
   
-  def umount(self):
-    
-    # Sanity
-    if self.vfs is None:
-      raise OSError('Nothing to unmount')
-    
-    # Catch 'already unmounted' errors
-    try:
-      vfs.umount( self.vfs )
-    except OSError: # EINVAL
-      pass
-      
-  # Set the card up when it's plugged
-  def init_card(self):
-    
-    # Sanity
-    if not self.present:
-      raise OSError('No card')
-    
-    # Initialise the card
-    if self.card is None:
-      self.card = sdcard.SDCard( self.spi, self.cs )
-    
-    # Set up the filesystem object
-    if self.vfs is None:
-      self.vfs = vfs.VfsFat(self.card)
+  # Set up callbacks
+  def init(self, on_plug, on_unplug ) -> None:
+    self._f_plug = on_plug
+    self._f_unplug = on_unplug
   
-  # Prepare the card to be unplugged
-  def deinit_card(self,unused=None):
-    
-    # Try to umount, regardless of card status
-    try:
-      self.umount()
-    except OSError:
-      pass
-    
-    # Tidy up the card if we have a ref to it
-    if self.card is not None:
-      
-      # If the card is still here
-      if self.present:
-        
-        # Sync
-        self.card.ioctl(3,None)
-        
-        # Add a 200ms wait here for card to finish write op?
-        # https://forum.arduino.cc/t/how-long-time-does-is-take-to-write-to-an-sd/107499
-        
-      # Shut down
-      self.card.ioctl(2,None)
-    
-    # Destroy objects
-    self.vfs = None
-    self.card = None
-    collect()
+  # Is there a card?
+  def has_card(self) -> bool:
+    # self._det is low when card is present, high when it's not
+    return not self._det.value()
   
-  # Interrupt service routine for plug/unplug event
-  def _isr_det(self, pin):
-    self.irq_state = disable_irq()
-    sleep_ms(40)
-    enable_irq( self.irq_state )
-    self.present = not pin.value()
+  # Sets up the SD card object.  Messes with SPI bus (before putting it back like it was)
+  def _init_card(self) -> None:
+    self.card = sdcard.SDCard( spi=self._spi, cs=self._cs, baudrate=self._baud )
+  
+  # Interrupt Service Routine for the card detect switch
+  def _isr_det(self, pin ):
     
-    # This causes MP to lock up.  Unclear why.
-    # https://docs.micropython.org/en/latest/library/micropython.html#micropython.schedule
-    # https://docs.micropython.org/en/latest/reference/isr_rules.html#creation-of-python-objects
-    # https://docs.micropython.org/en/latest/library/micropython.html#micropython.alloc_emergency_exception_buf
-    #if not self.present:
-    #  micropython.schedule(self.deinit_ref, 0)
+    # Are we in a bounce?
+    if ticks_diff( ticks_ms(), self._lvt ) < _DEBOUNCE_TIME:
+      return
+    
+    # Record the new transition time
+    self._lvt = ticks_ms()
+    
+    # Get out of this ISR
+    schedule(self._plug_ref, 0)

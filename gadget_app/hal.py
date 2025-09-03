@@ -2,7 +2,7 @@
 # Some original code in einktest.py
 #
 # T. Lloyd
-# 21 Aug 2025
+# 03 Sep 2025
 
 from micropython import const
 import asyncio
@@ -29,6 +29,7 @@ class HAL:
     self.needle = Needle( self.hw )
     self.eink = self.hw.eink
     self.oled = self.hw.oled
+    self.sd = self.hw.sd
     
     self.hw.init( cb=self.input.receiver )
     

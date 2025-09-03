@@ -2,7 +2,7 @@
 # For Micropython v1.24
 #
 # T. Lloyd
-# 21 Aug 2025
+# 03 Sep 2025
 
 
 # TO USE:
@@ -21,6 +21,7 @@ from array import array
 #import time
 import gc
 from micropython import const
+import vfs
 
 # Other libraries
 from . import pathlib
@@ -44,8 +45,18 @@ class Gadget:
     self.hal = HAL()
     
     # Mount the SD card
-    #sd = self.hw.sd1
-    #sd.mount(SD_ROOT)
+    sd = self.hal.sd
+    if not sd.has_card():
+      return
+    
+    # Problem with this, disabling SD until fix is found
+    #   File "gadget_app/character.py", line 224, in _save_now
+    #   File "gadget_app/character.py", line 181, in do_save
+    # OSError: [Errno 2] ENOENT
+    #
+    #vfs.mount( sd.card, SD_ROOT )
+    #print('Mounted SD card on',SD_ROOT)
+    
     #
     # TODO: Check here that the sd card was present and mounted ok
     #
@@ -506,6 +517,13 @@ class Gadget:
       #self._battery_charge_waiter(),
       self._battery_low_waiter(),
     ))
+    
+    # Mount SD card
+    if not self.hal.sd.has_card():
+      print('no card')
+      self.hal.oled.text('NO SD CARD',24,12)
+      self.hal.oled.show()
+      return
     
     # Oled idle stuff
     self._oled_idle = set()

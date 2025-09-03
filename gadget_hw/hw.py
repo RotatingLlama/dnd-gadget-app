@@ -2,7 +2,7 @@
 # Some original code in einktest.py
 #
 # T. Lloyd
-# 21 Aug 2025
+# 03 Sep 2025
 
 # Standard libraries
 from machine import I2C, SPI, ADC, PWM, Pin
@@ -15,6 +15,7 @@ from . import defs_rev1 as DEFS
 from . import eink
 from . import ssd1306
 from . import sd_socket
+#from . import sdcard
 from . import max7219_rev1 as max7219
 
 # Used by ISRs - declared here for speed of access
@@ -84,16 +85,16 @@ class HW:
     DEFS.ROT_A.irq( handler=self._isr_rot, trigger=(Pin.IRQ_RISING|Pin.IRQ_FALLING) )
     DEFS.ROT_B.irq( handler=self._isr_rot, trigger=(Pin.IRQ_RISING|Pin.IRQ_FALLING) )
     
+    # External SD
+    self.sd = sd_socket.SD_Socket( spi=self.spi, cs=DEFS.CS_SD1, det=DEFS.SD1_DET, baudrate=DEFS.SPI_FREQ )#, on_plug=lambda:None, on_unplug
+    
+    # Internal SD
+    #self.sd2 = sd_socket.SD_Socket( self.spi, DEFS.CS_SD2 )
+    
     # Needle
     DEFS.NEEDLE.init( Pin.OUT, value=0 )
     self.needle = PWM( DEFS.NEEDLE, freq=NEEDLE_DEF_FREQ, duty_u16=NEEDLE_DEF_DUTY )
     self._needle_val = NEEDLE_DEF_DUTY
-    
-    # External SD
-    self.sd1 = sd_socket.SD_Socket( spi=self.spi, cs=DEFS.CS_SD1, det=DEFS.SD1_DET )
-    
-    # Internal SD
-    #self.sd2 = sdcard.SDCard( self.spi, DEFS.CS_SD2 )
     
     # Eink
     self.eink = eink.EInk(

@@ -7,7 +7,8 @@ from micropython import const
 import asyncio
 import time
 
-SD_ROOT = const('/sd1')
+SD_ROOT = const('/internal')
+#SD_ROOT = const('/sd')
 SD_DIR = const('TTRPG')
 
 CHAR_SUBDIR = const('Characters')
