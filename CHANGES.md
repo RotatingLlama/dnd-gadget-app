@@ -14,7 +14,11 @@ GENERAL
     - In char select: prevent any selection
     - In play screen: allow normal play, but defer saves until replug
   - On replug, init card and reverse the above contingencies
-* Allow short rest stuff to get reset on long rest, too
+* Long/Short rests and other rests:
+  - Allow short rest stuff to get reset on long rest, too
+  - Allow things with charges that never automatically reset
+  - How to handle things that reset at 'dawn', or that don't regain all charges on reset (eg. Armour of Magical Strength)
+* Move titles on play screen down slightly (too close to bottom of arc)
 Way to skip character select screen and just go to last played
 Oled menu to blank out default stuff before drawing
 spell slots can reset on short rest for some classes?
