@@ -1,14 +1,14 @@
 # Misc common data and code
 #
 # T. Lloyd
-# 18 Aug 2025
+# 11 Sep 2025
 
 from micropython import const
 import asyncio
 import time
 
-SD_ROOT = const('/internal')
-#SD_ROOT = const('/sd')
+#SD_ROOT = const('/internal')
+SD_ROOT = const('/sd')
 SD_DIR = const('TTRPG')
 
 CHAR_SUBDIR = const('Characters')

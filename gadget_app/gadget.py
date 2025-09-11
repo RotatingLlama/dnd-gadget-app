@@ -2,7 +2,7 @@
 # For Micropython v1.24
 #
 # T. Lloyd
-# 03 Sep 2025
+# 11 Sep 2025
 
 
 # TO USE:
@@ -32,6 +32,8 @@ from . import menu
 from .hal import HAL
 from . import gfx
 
+_DEBUG_DISABLE_EINK = const(False)
+
 # Character file info
 MANDATORY_CHAR_FILES = [ # Files that must exist in a character directory for it to be recognised
   CHAR_STATS,
@@ -43,30 +45,6 @@ class Gadget:
     
     # Load modules
     self.hal = HAL()
-    
-    # Mount the SD card
-    sd = self.hal.sd
-    if not sd.has_card():
-      return
-    
-    # Problem with this, disabling SD until fix is found
-    #   File "gadget_app/character.py", line 224, in _save_now
-    #   File "gadget_app/character.py", line 181, in do_save
-    # OSError: [Errno 2] ENOENT
-    #
-    #vfs.mount( sd.card, SD_ROOT )
-    #print('Mounted SD card on',SD_ROOT)
-    
-    #
-    # TODO: Check here that the sd card was present and mounted ok
-    #
-    self.file_root = pathlib.Path( SD_ROOT ) / SD_DIR
-    self.file_root.mkdir(parents=True, exist_ok=True)
-    
-    # TODO: Handle this better
-    # Check all files/directories exist
-    if not ( self.file_root / CHAR_SUBDIR ).is_dir():
-      raise RuntimeError(f'{CHAR_SUBDIR} directory does not exist')
     
     #
     self.character = None
@@ -268,7 +246,8 @@ class Gadget:
       # Takes a framebuffer and a list of chars to show
       # Returns as many chars as it actually did show
       chars = gfx.draw_char_select( self.hal.eink, self._find_chars() )
-      self.hal.eink_send_refresh() # EINK
+      if not _DEBUG_DISABLE_EINK:
+        self.hal.eink_send_refresh()
       #print(chars)
       
       # This will hold the Character object
@@ -279,7 +258,8 @@ class Gadget:
       def set_char(i):
         from .character import Character
         cobj[0] = Character( self.hal, chars[i]['dir'] )
-        cobj[0].draw_eink() # EINK
+        if not _DEBUG_DISABLE_EINK:
+          cobj[0].draw_eink()
         cobj[0].draw_mtx()
         cobj[0].show_curr_hp()
         done.set()
@@ -518,12 +498,39 @@ class Gadget:
       self._battery_low_waiter(),
     ))
     
-    # Mount SD card
-    if not self.hal.sd.has_card():
-      print('no card')
-      self.hal.oled.text('NO SD CARD',24,12)
+    # Display something once on the oled
+    # Used for simple error reporting
+    def startupfail(msg):
+      print('Error during startup:',msg)
+      m = msg[:16] # Can only display 16 chars across the oled
+      x = 64 - ( len(msg) * 4 ) # Half oled width minus half message width
+      self.hal.oled.text(m,x,12)
       self.hal.oled.show()
+      
+    # Check that there's an SD, otherwise die
+    if not self.hal.sd.has_card():
+      startupfail('NO SD CARD')
       return
+    
+    # Mount the SD
+    vfs.mount( self.hal.sd.card, SD_ROOT )
+    print('Mounted SD card on',SD_ROOT)
+    
+    # TODO: Check here that the sd card was present and mounted ok
+    # 1.25 onwards: vfs.mount() will return a tuple of mounted volumes
+    
+    # Ensure our root directory exists
+    self.file_root = pathlib.Path( SD_ROOT ) / SD_DIR
+    self.file_root.mkdir(parents=True, exist_ok=True)
+    
+    # Check all files/directories exist
+    if not ( self.file_root / CHAR_SUBDIR ).is_dir():
+      #raise RuntimeError(f'{CHAR_SUBDIR} directory does not exist')
+      startupfail('CHK SD, NO CHARS')
+      return
+    
+    # End of fallible setup, can free this
+    del startupfail
     
     # Oled idle stuff
     self._oled_idle = set()

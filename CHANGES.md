@@ -4,12 +4,6 @@ TODO
 GENERAL
 -------
 * Proper SD card handling
-  - hw.py support added.  Need to integrate with gadget.py now
-  - Error on save to SD.  Not sure why.  Fix this
-  - os.umount(vfs) works correctly even if the underlying block device has gone away (assuming no pending writes?  Check MP vfs write() behaviour)
-    - MP vfs write() behaviour unclear, but filesystem can be dirty - that's what os.sync() is for
-    - Just make sure we call os.sync() after every save and random disconnects will be fine
-  - At startup, mount if present.  If not present, do error thing
   - On unplug, put warning on oled, and:
     - In char select: prevent any selection
     - In play screen: allow normal play, but defer saves until replug
@@ -61,6 +55,7 @@ Gameplay Changes & Bugfixes
 
 Visible Changes
 ---------------
+* Moved all character data to external SD card
 * Improved Play Screen layout and added background image support (background.2ink)
 * Added brightness control for matrix
 * Added battery monitor

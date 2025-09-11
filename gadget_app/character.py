@@ -1,7 +1,7 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 21 Aug 2025
+# 11 Sep 2025
 
 import asyncio
 import os
@@ -137,6 +137,7 @@ class Character:
     
     # Where are my files
     self.dir = chardir
+    print(chardir)
     
     # TODO: Check the dir and its files at this point, raise an error if problems
     
@@ -178,6 +179,8 @@ class Character:
     # ...except memory usage is ~7x eventual filesize
     def do_save( f ):
       st = self.stats
+      #print(f'Writing file {f}')
+      #print(type(f))
       with open( f, 'w') as fd:
         w = fd.write
         
@@ -221,7 +224,7 @@ class Character:
     f = str( self.dir / CHAR_STATS )
     
     # Save out the file, temporarily preserving the previous one
-    do_save( '.' + f + '.new' )
+    do_save( f + '.new' )
     
     # Ensure the new file is saved
     os.sync()
