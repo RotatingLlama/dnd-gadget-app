@@ -4,18 +4,41 @@
 # Sets up SD card automatically when plugged
 #
 # T. Lloyd
-# 03 Sep 2025
+# 12 Sep 2025
 
 from . import sdcard
-#import vfs
-#from gc import collect
-#from machine import disable_irq, enable_irq
-from time import ticks_ms, ticks_diff #, sleep_ms
+from time import ticks_ms, ticks_diff
 from micropython import const, schedule
 
+# For card detect switch
 _DEBOUNCE_TIME = const(40) # In ms
 
 class SD_Socket:
+  '''
+    INIT ARGS
+    
+      spi       - SPI object
+      cs        - Pin for SPI chip select
+      det       - Pin that will be pulled low when a card is present
+      baudrate  - Set the SPI bus to this baud rate after card init
+      on_plug   - Function that will be called when the card is plugged in.  It is not passed any args.
+      on_unplug - Function that will be called when the card is unplugged.  It is not passed any args.
+    
+    
+    METHODS
+    
+      init() - Sets the plug/unplug callbacks.  Called automatically by __init__().  Returns nothing.
+        on_plug   - Function that will be called when the card is plugged in.  It is not passed any args.
+        on_unplug - Function that will be called when the card is unplugged.  It is not passed any args.
+        
+      
+      has_card() - Returns bool indicating card presense
+      
+      
+    PROPERTIES
+      
+      card - SDCard object if present, else None
+  '''
   
   def __init__( self, spi, cs, det, baudrate=1320000, on_plug=lambda:None, on_unplug=lambda:None ):
     

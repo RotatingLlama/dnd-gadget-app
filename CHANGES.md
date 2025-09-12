@@ -5,9 +5,11 @@ GENERAL
 -------
 * Proper SD card handling
   - On unplug, put warning on oled, and:
-    - In char select: prevent any selection
-    - In play screen: allow normal play, but defer saves until replug
+    - In char select: prevent any selection.  Don't assume the same characters are still on the card after reinsertion.
+    - In play screen: allow normal play, but defer saves until replug.  Create savefile on replug no matter what else is on the card now.
+    - Oled overlay warning of missing card
   - On replug, init card and reverse the above contingencies
+* Since MP 1.26 floats can be constants.  Roll out const() use where applicable.
 * Long/Short rests and other rests:
   - Allow short rest stuff to get reset on long rest, too
   - Allow things with charges that never automatically reset
@@ -23,7 +25,8 @@ Rotary still misses steps, particularly if it's spun quickly - needs checking wi
 
 img
 ---
-Fonts
+Fonts - review 1.26 capabilities
+- https://github.com/micropython/micropython/releases/tag/v1.26.0#:~:text=which%20helps%20when%20implementing%20custom%20fonts
 
 character.py
 ------------

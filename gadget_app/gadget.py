@@ -1,8 +1,8 @@
 # TTRPG Gadget
-# For Micropython v1.24
+# For Micropython v1.26
 #
 # T. Lloyd
-# 11 Sep 2025
+# 12 Sep 2025
 
 
 # TO USE:
@@ -255,13 +255,21 @@ class Gadget:
       
       # Gets called when a character is chosen
       # Gets given an index into the list from _find_chars()
-      def set_char(i):
+      def set_char( charid ):
+        
+        # Ignore character choice if the SD card has gone away
+        if not self.hal.sd.has_card():
+          return
+        
+        # Set it up
         from .character import Character
-        cobj[0] = Character( self.hal, chars[i]['dir'] )
+        cobj[0] = Character( self.hal, chars[ charid ]['dir'] )
         if not _DEBUG_DISABLE_EINK:
           cobj[0].draw_eink()
         cobj[0].draw_mtx()
         cobj[0].show_curr_hp()
+        
+        # Let everything else know
         done.set()
       
       # Set up the character select UI
@@ -509,15 +517,24 @@ class Gadget:
       
     # Check that there's an SD, otherwise die
     if not self.hal.sd.has_card():
-      startupfail('NO SD CARD')
+      #startupfail('NO SD CARD')
+      from img import load
+      fb = load('/assets/nosd.pi')
+      self.hal.oled.blit(fb,0,0)
+      self.hal.oled.show()
       return
     
     # Mount the SD
     vfs.mount( self.hal.sd.card, SD_ROOT )
+    ok = False
+    for mp in vfs.mount():
+      if mp[1] == SD_ROOT:
+        ok = True
+        break
+    if not ok:
+      startupfail('BAD SD FS')
+      return
     print('Mounted SD card on',SD_ROOT)
-    
-    # TODO: Check here that the sd card was present and mounted ok
-    # 1.25 onwards: vfs.mount() will return a tuple of mounted volumes
     
     # Ensure our root directory exists
     self.file_root = pathlib.Path( SD_ROOT ) / SD_DIR
@@ -526,11 +543,11 @@ class Gadget:
     # Check all files/directories exist
     if not ( self.file_root / CHAR_SUBDIR ).is_dir():
       #raise RuntimeError(f'{CHAR_SUBDIR} directory does not exist')
-      startupfail('CHK SD, NO CHARS')
+      startupfail('NO CHARS ON SD')
       return
     
-    # End of fallible setup, can free this
-    del startupfail
+    # End of fallible setup, can free these
+    del startupfail, ok
     
     # Oled idle stuff
     self._oled_idle = set()

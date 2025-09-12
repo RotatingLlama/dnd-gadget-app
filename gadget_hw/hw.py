@@ -2,7 +2,7 @@
 # Some original code in einktest.py
 #
 # T. Lloyd
-# 03 Sep 2025
+# 12 Sep 2025
 
 # Standard libraries
 from machine import I2C, SPI, ADC, PWM, Pin
@@ -86,7 +86,7 @@ class HW:
     DEFS.ROT_B.irq( handler=self._isr_rot, trigger=(Pin.IRQ_RISING|Pin.IRQ_FALLING) )
     
     # External SD
-    self.sd = sd_socket.SD_Socket( spi=self.spi, cs=DEFS.CS_SD1, det=DEFS.SD1_DET, baudrate=DEFS.SPI_FREQ )#, on_plug=lambda:None, on_unplug
+    self.sd = sd_socket.SD_Socket( spi=self.spi, cs=DEFS.CS_SD1, det=DEFS.SD1_DET, baudrate=DEFS.SPI_FREQ )
     
     # Internal SD
     #self.sd2 = sd_socket.SD_Socket( self.spi, DEFS.CS_SD2 )
