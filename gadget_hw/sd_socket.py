@@ -4,14 +4,15 @@
 # Sets up SD card automatically when plugged
 #
 # T. Lloyd
-# 12 Sep 2025
+# 13 Sep 2025
 
 from . import sdcard
-from time import ticks_ms, ticks_diff
+from time import ticks_ms, ticks_diff, sleep_ms
 from micropython import const, schedule
 
 # For card detect switch
-_DEBOUNCE_TIME = const(40) # In ms
+_DEBOUNCE_TIME = const(100) # In ms.  Was 40, didn't seem to be enough
+_SETTLE_TIME = const(30) # In ms.  How long to wait between plug and card init.  20 is borderline, 30 ok if inserted quickly.
 
 class SD_Socket:
   '''
@@ -40,19 +41,21 @@ class SD_Socket:
       card - SDCard object if present, else None
   '''
   
-  def __init__( self, spi, cs, det, baudrate=1320000, on_plug=lambda:None, on_unplug=lambda:None ):
+  def __init__( self, spi, cs, det, baudrate=1320000, on_plug=lambda:None, on_unplug=lambda:None ):#_event=lambda:None ):
     
     # Record
     self._spi = spi
     self._cs = cs
     self._det = det
     self._baud = baudrate
+    #self._f_plug_event = lambda:None
     self._f_plug = lambda:None
     self._f_unplug = lambda:None
+    self._badcard = False
     
     # Set up the detector pin
     self._det.init( mode=det.IN, pull=det.PULL_UP )
-    self._det.irq( handler=self._isr_det, trigger=(det.IRQ_FALLING | det.IRQ_RISING) ) #, wake=None)#, hard=True )
+    self._det.irq( handler=self._isr_det, trigger=(det.IRQ_FALLING | det.IRQ_RISING), hard=True ) #, wake=None)
     
     # Last valid transition (of detector switch)
     self._lvt = ticks_ms()
@@ -64,30 +67,43 @@ class SD_Socket:
     self._plug(0)
     
     # Set up the callbacks (if any)
-    self.init( on_plug, on_unplug )
+    self.init( on_plug, on_unplug )#_event )
   
-  # Called by the card detect ISR, handles plug/unplug events
+  # Called by the card detect ISR, via schedule(), handles plug/unplug events
   def _plug(self,x) -> None:
+    #print(x)
     if self.has_card():
+      print('sd_s: PLUG')
+      sleep_ms(_SETTLE_TIME)
       self._init_card()
       self._f_plug()
     else:
+      print('sd_s: UNPLUG')
       self.card = None
+      self._badcard = False
       self._f_unplug()
+    #self._f_plug_event()
   
-  # Set up callbacks
-  def init(self, on_plug, on_unplug ) -> None:
+  # Set up callback
+  def init(self, on_plug, on_unplug ): #_event ) -> None:
+    #self._f_plug_event = on_plug_event
     self._f_plug = on_plug
     self._f_unplug = on_unplug
   
   # Is there a card?
   def has_card(self) -> bool:
     # self._det is low when card is present, high when it's not
-    return not self._det.value()
+    return ( not self._det.value() ) and ( not self._badcard )
   
   # Sets up the SD card object.  Messes with SPI bus (before putting it back like it was)
   def _init_card(self) -> None:
-    self.card = sdcard.SDCard( spi=self._spi, cs=self._cs, baudrate=self._baud )
+    try:
+      self.card = sdcard.SDCard( spi=self._spi, cs=self._cs, baudrate=self._baud )
+    except OSError:
+      print('Could not init SD card!')
+      self._badcard = True
+      self.card = None
+      
   
   # Interrupt Service Routine for the card detect switch
   def _isr_det(self, pin ):
@@ -100,4 +116,4 @@ class SD_Socket:
     self._lvt = ticks_ms()
     
     # Get out of this ISR
-    schedule(self._plug_ref, 0)
+    schedule(self._plug_ref, pin.value() ) # Ref to self._plug()

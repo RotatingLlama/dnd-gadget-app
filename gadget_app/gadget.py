@@ -2,7 +2,7 @@
 # For Micropython v1.26
 #
 # T. Lloyd
-# 12 Sep 2025
+# 13 Sep 2025
 
 
 # TO USE:
@@ -31,6 +31,7 @@ from .common import *
 from . import menu
 from .hal import HAL
 from . import gfx
+import img # Export this to gfx?
 
 _DEBUG_DISABLE_EINK = const(False)
 
@@ -39,6 +40,20 @@ MANDATORY_CHAR_FILES = [ # Files that must exist in a character directory for it
   CHAR_STATS,
 ]
 
+# HAL priority levels
+_HAL_PRIORITY_IDLE = const(0)
+_HAL_PRIORITY_NOSD = const(5)
+_HAL_PRIORITY_MENU = const(10)
+_HAL_PRIORITY_SHUTDOWN = const(100)
+
+# Error text for SD problems
+_SD_ERRORS = {
+  #    123456789  123456789
+  1 : 'Card not \npresent!',
+  2 : 'Could not\nmount SD!',
+  3 : 'No chars \non SD :(',
+}
+
 class Gadget:
   
   def __init__(self):
@@ -46,8 +61,10 @@ class Gadget:
     # Load modules
     self.hal = HAL()
     
-    #
+    # Things we want to keep track of
+    self.file_root = pathlib.Path( SD_ROOT ) / SD_DIR
     self.character = None
+    self._nosdcr = None
     
     # Phase triggers
     self.phase_select_char = asyncio.Event()
@@ -279,7 +296,7 @@ class Gadget:
         btn = set_char,
         back = lambda x: self.hal.needle.wobble() # self.power_off() # self.hal.hw.empty_battery.set()
       )
-      cr = self.hal.register( priority=1, features=('needle','input',), input_target=csm.input_target )
+      cr = self.hal.register( priority=_HAL_PRIORITY_MENU, features=('needle','input',), input_target=csm.input_target )
       #self.hw.init( cw=csm.cw, ccw=csm.ccw, btn=csm.btn, sw=csm.back )
       
       # Wait until the character is chosen
@@ -461,7 +478,7 @@ class Gadget:
         btn = rmm[2].next_item
       )
       #self.hw.init( cw=rm.cw, ccw=rm.ccw, btn=rm.btn, sw=rm.back )
-      cr = self.hal.register( priority=0, features=('input',), input_target=rm.input_target )
+      cr = self.hal.register( priority=_HAL_PRIORITY_MENU, features=('input',), input_target=rm.input_target )
       
       # Assign
       self.menu = rm
@@ -506,53 +523,59 @@ class Gadget:
       self._battery_low_waiter(),
     ))
     
-    # Display something once on the oled
-    # Used for simple error reporting
-    def startupfail(msg):
-      print('Error during startup:',msg)
-      m = msg[:16] # Can only display 16 chars across the oled
-      x = 64 - ( len(msg) * 4 ) # Half oled width minus half message width
-      self.hal.oled.text(m,x,12)
-      self.hal.oled.show()
+    def sd_plug():
       
-    # Check that there's an SD, otherwise die
-    if not self.hal.sd.has_card():
-      #startupfail('NO SD CARD')
-      from img import load
-      fb = load('/assets/nosd.pi')
-      self.hal.oled.blit(fb,0,0)
-      self.hal.oled.show()
+      # Remove any existing SD error message
+      if self._nosdcr is not None:
+        self.hal.unregister(self._nosdcr)
+        self._nosdcr = None
+      
+      # Try to mount
+      e = self._try_mount_sd()
+      if e > 0:
+        self._nosdcr = self.hal.register(
+          priority=_HAL_PRIORITY_NOSD,
+          features=('oled',),
+          callback=lambda:self._render_sd_error( _SD_ERRORS[e] )
+        )
+      
+    def sd_unplug():
+      
+      # Tidy up the mountpoint
+      if self._sd_is_mounted():
+        vfs.umount( SD_ROOT )
+      
+      # Remove any existing SD error message
+      if self._nosdcr is not None:
+        self.hal.unregister(self._nosdcr)
+      
+      # Register the new error
+      self._nosdcr = self.hal.register(
+        priority=_HAL_PRIORITY_NOSD,
+        features=('oled',),
+        callback=lambda:self._render_sd_error( _SD_ERRORS[1] )
+      )
+    
+    #sd = asyncio.create_task(self._sd_plug_waiter())
+    # Set up triggers for hot plug/unplug
+    self.hal.sd.init( sd_plug, sd_unplug )
+    
+    # Try to mount the SD card
+    # TODO: Why does the oled warning get immediately overwritten by the idle screen?
+    # Try to mount
+    e = self._try_mount_sd()
+    if e > 0:
+      self._nosdcr = self.hal.register(
+        priority=_HAL_PRIORITY_NOSD,
+        features=('oled',),
+        callback=lambda:self._render_sd_error( _SD_ERRORS[e] )
+      )
       return
-    
-    # Mount the SD
-    vfs.mount( self.hal.sd.card, SD_ROOT )
-    ok = False
-    for mp in vfs.mount():
-      if mp[1] == SD_ROOT:
-        ok = True
-        break
-    if not ok:
-      startupfail('BAD SD FS')
-      return
-    print('Mounted SD card on',SD_ROOT)
-    
-    # Ensure our root directory exists
-    self.file_root = pathlib.Path( SD_ROOT ) / SD_DIR
-    self.file_root.mkdir(parents=True, exist_ok=True)
-    
-    # Check all files/directories exist
-    if not ( self.file_root / CHAR_SUBDIR ).is_dir():
-      #raise RuntimeError(f'{CHAR_SUBDIR} directory does not exist')
-      startupfail('NO CHARS ON SD')
-      return
-    
-    # End of fallible setup, can free these
-    del startupfail, ok
     
     # Oled idle stuff
     self._oled_idle = set()
     self._setup_oled_renderers()
-    oledcr = self.hal.register( priority=0, features=('oled',), callback=self._oled_idle_render )
+    oledcr = self.hal.register( priority=_HAL_PRIORITY_IDLE, features=('oled',), callback=self._oled_idle_render )
     self._oled_idle_task = asyncio.create_task( self._oled_runner(oledcr) )
     
     # Kick off the main stuff
@@ -567,6 +590,114 @@ class Gadget:
     print('Main loop done, waiting...')
     await self._exit_loop.wait()
     print('Exiting.  Adios!')
+  
+  # Do we have some filesystem mounted at the SD mountpoint?
+  def _sd_is_mounted(self) -> bool:
+    ok = False
+    for mp in vfs.mount():
+      if mp[1] == SD_ROOT:
+        ok = True
+        break
+    return ok
+  
+  # Check if the SD filesystem is OK
+  # 0 = OK
+  # Ref _SD_ERRORS for other codes
+  def _sd_fs_valid(self) -> int:
+    
+    # If it's not mounted then we definitely don't have a valid fs
+    if not self._sd_is_mounted():
+      return 2
+    
+    # Is the characters directory  where we expect it to be?
+    if not ( self.file_root / CHAR_SUBDIR ).is_dir():
+      return 3
+    
+    # Success
+    return 0
+  
+  # Attempt to mount the SD.  Does all checks and returns result.
+  # 0 = Success
+  # Ref _SD_ERRORS for other codes
+  def _try_mount_sd(self) -> int:
+    
+    # Check if there's an SD, otherwise die
+    if not self.hal.sd.has_card():
+      return 1
+    
+    # Mount, if necessary
+    if not self._sd_is_mounted():
+      vfs.mount( self.hal.sd.card, SD_ROOT )
+    
+    # Ensure our root directory exists
+    #self.file_root.mkdir(parents=True, exist_ok=True)
+    
+    # Check everything looks ok
+    err = self._sd_fs_valid()
+    if err > 0:
+      return err
+    
+    print('Mounted SD card on',SD_ROOT)
+    return 0
+  
+  # TODO: Move this to gfx.py?
+  def _render_sd_error(self,text):
+      
+      # Set up oled ref
+      o = self.hal.oled
+      o.fill(0)
+      
+      # No SD graphic
+      # TODO: Replace with blit_onto()
+      fb = img.load('/assets/nosd.pi')
+      o.blit(fb,0,0)
+      
+      # Display message
+      lines = text.split('\n')
+      h = min( len(lines)*8, 32 )
+      y = ( 32 - h ) // 2
+      for line in lines:
+        o.text( line, 58,y )
+        y += 8
+      
+      o.show()
+  
+  '''
+  async def _sd_plug_waiter(self):
+    while True:
+      await self.hal.sd_plug.wait()
+      
+      # Remove any existing SD error message
+      if self._nosdcr is not None:
+        self.hal.unregister(self._nosdcr)
+        self._nosdcr = None
+      
+      # Try to mount
+      e = self._mount_sd()
+      if e > 0:
+        self._nosdcr = self.hal.register(
+          priority=_HAL_PRIORITY_NOSD,
+          features=('oled',),
+          callback=lambda:self._render_sd_error( _SD_ERRORS[e] )
+        )
+      
+      await self.hal.sd_unplug.wait()
+      
+      # Tidy up the mountpoint
+      if self._sd_is_mounted():
+        vfs.umount( SD_ROOT )
+      
+      # Remove any existing SD error message
+      if self._nosdcr is not None:
+        self.hal.unregister(self._nosdcr)
+      
+      # Register the new error
+      self._nosdcr = self.hal.register(
+        priority=_HAL_PRIORITY_NOSD,
+        features=('oled',),
+        callback=lambda:self._render_sd_error( _SD_ERRORS[1] )
+      )
+  '''
   
   # Reacts to the "battery charging" status changing (currently empty)
   async def _battery_charge_waiter(self):
@@ -619,7 +750,7 @@ class Gadget:
     et = asyncio.create_task( self.hal.eink.refresh() )
     
     # Wait message
-    cr = self.hal.register( priority=99, features=('oled',) )
+    cr = self.hal.register( priority=_HAL_PRIORITY_SHUTDOWN, features=('oled',) )
     oled = self.hal.oled
     oled.fill(0)
     oled.text( 'Please wait...', 0,0, 1 )

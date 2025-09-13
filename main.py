@@ -1,5 +1,7 @@
 from gadget_hw import defs_rev1 as DEFS
 from machine import Pin
+from micropython import alloc_emergency_exception_buf
+alloc_emergency_exception_buf(100) 
 
 # Define the switch and the button
 s = DEFS.SW1

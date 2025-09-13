@@ -3,7 +3,11 @@ TODO
 
 GENERAL
 -------
+* Adjust damage, but don't accept and use Back.  Back out of oled menu.  Can't enter matrix menu now, only oled!
 * Proper SD card handling
+  - In sd_socket.py, async retries when init fails after plug.  Can just be down to slow insertion.
+  - Full async plug/unplug events that main loop can await, eg. wait for card to be plugged after startup
+  - Figure out a way to get 'bad sd init' from sd_socket.py onto the oled
   - On unplug, put warning on oled, and:
     - In char select: prevent any selection.  Don't assume the same characters are still on the card after reinsertion.
     - In play screen: allow normal play, but defer saves until replug.  Create savefile on replug no matter what else is on the card now.

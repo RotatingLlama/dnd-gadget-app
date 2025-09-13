@@ -2,7 +2,7 @@
 # Some original code in einktest.py
 #
 # T. Lloyd
-# 12 Sep 2025
+# 13 Sep 2025
 
 # Standard libraries
 from machine import I2C, SPI, ADC, PWM, Pin
@@ -82,8 +82,8 @@ class HW:
     #
     DEFS.SW1.irq( handler=self._isr_sw, trigger=Pin.IRQ_RISING)
     DEFS.ROT_BTN.irq( handler=self._isr_btn, trigger=Pin.IRQ_RISING)
-    DEFS.ROT_A.irq( handler=self._isr_rot, trigger=(Pin.IRQ_RISING|Pin.IRQ_FALLING) )
-    DEFS.ROT_B.irq( handler=self._isr_rot, trigger=(Pin.IRQ_RISING|Pin.IRQ_FALLING) )
+    DEFS.ROT_A.irq( handler=self._isr_rot, trigger=(Pin.IRQ_RISING|Pin.IRQ_FALLING), hard=True )
+    DEFS.ROT_B.irq( handler=self._isr_rot, trigger=(Pin.IRQ_RISING|Pin.IRQ_FALLING), hard=True )
     
     # External SD
     self.sd = sd_socket.SD_Socket( spi=self.spi, cs=DEFS.CS_SD1, det=DEFS.SD1_DET, baudrate=DEFS.SPI_FREQ )
@@ -201,10 +201,16 @@ class HW:
     # So valid patterns are 2 3 1 and 2 0 1
     
     if rot[0] == 0x21: # 0x21 = 00100001 = 2 0 1 = clockwise
-      schedule( _cb_input, 2 )
+      try:
+        schedule( _cb_input, 2 )
+      except RuntimeError:
+        pass
       #print('cw')
     elif rot[0] == 0x2D: # 0x2D = 00101101 = 2 3 1 = anticlockwise
-      schedule( _cb_input, 3 )
+      try:
+        schedule( _cb_input, 3 )
+      except RuntimeError:
+        pass
       #print('ccw')
   
   # Runs in an endless loop.
