@@ -176,7 +176,7 @@ class Gadget:
         v( x-11+i, y+1, 5, 1 )
       
       # Percentage text
-      txt = f'{p}%'
+      txt = f'{pc}%'
     
     t( txt, x - 12 -( 8*len(txt) ), y, 1 )
     t( f'{round(self.hal.hw.voltage_stable(),4)}v', x-47, y+8, 1 )

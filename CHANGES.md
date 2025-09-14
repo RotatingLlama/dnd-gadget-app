@@ -3,7 +3,7 @@ TODO
 
 GENERAL
 -------
-* Adjust damage, but don't accept and use Back.  Back out of oled menu.  Can't enter matrix menu now, only oled!
+* BUG: Enter oled menu.  Back out of oled menu.  Can't enter matrix menu now, only oled!
 * Proper SD card handling
   x In sd_socket.py, async retries when init fails after plug.  Can just be down to slow insertion.
   x Full async plug/unplug events that main loop can await, eg. wait for card to be plugged after startup
@@ -36,6 +36,9 @@ img
 ---
 Fonts - review 1.26 capabilities
 - https://github.com/micropython/micropython/releases/tag/v1.26.0#:~:text=which%20helps%20when%20implementing%20custom%20fonts
+Support PNG???
+- https://github.com/remixer-dec/mpy-img-decoder/tree/master
+- Also https://github.com/Scondo/purepng
 
 character.py
 ------------

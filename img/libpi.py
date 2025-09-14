@@ -1,7 +1,7 @@
 # Functions for dealing with .pi files (formerly 2ink)
 #
 # T. Lloyd
-# 12 Sep 2025
+# 14 Sep 2025
 
 # Standard libs
 from struct import unpack, pack
@@ -149,8 +149,8 @@ def load_into( buf, filename ):
   
   # Make a nice object containing the head data
   head = [0]*5
-  head[0:2] = top
-  head.extend( unpack( '>HHB', rest_of_head ) )
+  head[0:2] = list(top)
+  head[2:5] = unpack( '>HHB', rest_of_head )
   
   # Tidy up
   del rest_of_head, version, ds, fd, top
