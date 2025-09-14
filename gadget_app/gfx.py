@@ -1,7 +1,7 @@
 # Drawing functions
 #
 # T. Lloyd
-# 21 Aug 2025
+# 14 Sep 2025
 
 # Standard libraries
 import micropython
@@ -93,6 +93,15 @@ cool_luts = (
 # 6 - vert lines and chaos.  very red.  CONFIRMED
 # Mainly red (2) or mainly black (1)?
 lut_colours = bytes([2,2,2,2,2,2,2])
+
+# Error phrases for render_sd_error()
+_SD_ERRORS = {
+  #   '123456789__123456789',123456789',
+  1 : 'Card not \npresent! ',
+  2 : 'Card     \nunready, \nor faulty',
+  3 : 'Could not\nmount SD!',
+  4 : 'No chars \non SD :( ',
+}
 
 # Takes a buffer (bytearray) to operate on
 # Takes a lookup table (bytes) to map the 6 bits above a pxel to the 2 bits of that pixel
@@ -667,3 +676,23 @@ def draw_char_select( fb, chars ):
 # Draws a 'dead battery' graphic to the framebuffer
 def draw_dead_batt(fb):
   img.load_into( fb.buf, IMG_DEADBATT )
+
+# Render the SD error screen on the oled, with some text.
+def render_sd_error( e:int, oled ):
+    
+    oled.fill(0)
+    
+    # No-SD graphic
+    # TODO: Replace with blit_onto()
+    fb = img.load('/assets/nosd.pi')
+    oled.blit(fb,0,0)
+    
+    # Display message
+    lines = _SD_ERRORS[e].split('\n')
+    h = min( len(lines)*8, 32 )
+    y = ( 32 - h ) // 2
+    for line in lines:
+      oled.text( line, 57,y )
+      y += 8
+    
+    oled.show()

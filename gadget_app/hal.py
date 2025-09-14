@@ -2,7 +2,7 @@
 # Some original code in einktest.py
 #
 # T. Lloyd
-# 03 Sep 2025
+# 14 Sep 2025
 
 from micropython import const
 import asyncio
@@ -31,6 +31,7 @@ class HAL:
     self.oled = self.hw.oled
     self.sd = self.hw.sd
     
+    # Set up the input link
     self.hw.init( cb=self.input.receiver )
     
     # Priority lock levels for each lockable feature
@@ -56,8 +57,7 @@ class HAL:
     
     # Software components using register()
     self._clients = set()
-    
-    
+  
   # Register code that will use hardware features.
   # priority: int, higher number is higher priority
   # features: list of hardware features this code needs
@@ -125,7 +125,19 @@ class HAL:
           c.callback()
         
     #print('New priorities:',feat )
-        
+  
+  # Queries low-level state of SD card.
+  # Possible return values:
+  # 0 : Card present and responding
+  # 1 : Card not present
+  # 2 : Card present, but not ready
+  def get_sd_status(self) -> int:
+    if self.sd.card_ready.is_set():
+      return 0
+    if self.sd.card_present.is_set():
+      return 2
+    return 1
+  
   # Allows eink updates to be triggered from non-async code
   async def _eink_updater(self):
     

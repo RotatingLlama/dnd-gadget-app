@@ -2,7 +2,7 @@
 # For Micropython v1.26
 #
 # T. Lloyd
-# 13 Sep 2025
+# 14 Sep 2025
 
 
 # TO USE:
@@ -31,9 +31,8 @@ from .common import *
 from . import menu
 from .hal import HAL
 from . import gfx
-import img # Export this to gfx?
 
-_DEBUG_DISABLE_EINK = const(False)
+_DEBUG_ENABLE_EINK = const(True)
 
 # Character file info
 MANDATORY_CHAR_FILES = [ # Files that must exist in a character directory for it to be recognised
@@ -46,13 +45,14 @@ _HAL_PRIORITY_NOSD = const(5)
 _HAL_PRIORITY_MENU = const(10)
 _HAL_PRIORITY_SHUTDOWN = const(100)
 
-# Error text for SD problems
-_SD_ERRORS = {
-  #    123456789  123456789
-  1 : 'Card not \npresent!',
-  2 : 'Could not\nmount SD!',
-  3 : 'No chars \non SD :(',
-}
+# In ms.  How often to redraw the OLED idle screen
+_OLED_IDLE_REFRESH = const(500)
+
+# Store this figure for future use
+_MEM_TOTAL = gc.mem_alloc() + gc.mem_free()
+
+# Used for memory history graph on idle screen
+memlog = bytearray(33)
 
 class Gadget:
   
@@ -64,7 +64,7 @@ class Gadget:
     # Things we want to keep track of
     self.file_root = pathlib.Path( SD_ROOT ) / SD_DIR
     self.character = None
-    self._nosdcr = None
+    self._sd_mounted = asyncio.Event()
     
     # Phase triggers
     self.phase_select_char = asyncio.Event()
@@ -122,130 +122,127 @@ class Gadget:
     while True:
       if cr.ready:
         o()
-      await s(500)
-  #
-  def _oled_idle_render(self):
-    oled = self.hal.oled
-    oled.fill(0)
-    for item in self._oled_idle:
-      item( oled )
-    oled.show()
+      await s(_OLED_IDLE_REFRESH)
   
-  # Define and register the functions that draw oled updates (run ONCE)
-  def _setup_oled_renderers(self):
+  # Render all the idle screen stuff
+  def _oled_idle_render(self):
     
-    # Canary so we can see if this ever happens more than once
-    print('Registering OLED functions...')
+    # Localisation
+    oled = self.hal.oled
+    v = oled.vline
+    h = oled.hline
+    r = oled.rect
+    p = oled.pixel
+    t = oled.text
     
-    # Containers for persistent values
-    #uint = array( 'I', [0] ) # Unsigned int (2 bytes)
-    long = array( 'L', [0]*2 ) # Unsigned long (4 bytes)
+    oled.fill(0)
     
-    # Battery monitor on default OLED screen
-    pc = self.hal.batt_pc
-    def batt(disp):
-      v = disp.vline
-      h = disp.hline
-      p = pc()
-      
-      # Top-left point
-      x = 127
-      y = 0
-      
-      # Draw the battery outline             xxxxxxxxxxxx+
-      v( x-1,  y,     6, 1 ) # Right wall    x          x
-      v( x,    y+2,   3, 1 ) # Nub           x          xx
-      h( x-1,  y,   -12, 1 ) # Top wall      x          xx
-      v( x-12, y,     6, 1 ) # Left wall     x          xx
-      h( x-1,  y+6, -12, 1 ) # Bottom wall   x          x
-      #                                      xxxxxxxxxxxx
-      
-      if p is None:
-        # If we didn't get a percentage, we probably have VBUS
-        t = 'USB'
-      else:
-          
-        # How full is the battery?
-        bars = ( p // 10 )
+    
+    ### SD PROBLEMS ###
+    #
+    # If there's an SD problem, override the rest of this screen
+    #
+    e = self.hal.get_sd_status()
+    if e > 0:
+      gfx.render_sd_error( e, oled )
+      return
+    
+    
+    ### BATTERY MONITOR ###
+    
+    # Top-left point
+    x = 127
+    y = 0
+    #
+    # Draw the battery outline             xxxxxxxxxxxx+
+    v( x-1,  y,     6, 1 ) # Right wall    x          x
+    v( x,    y+2,   3, 1 ) # Nub           x          xx
+    h( x-1,  y,   -12, 1 ) # Top wall      x          xx
+    v( x-12, y,     6, 1 ) # Left wall     x          xx
+    h( x-1,  y+6, -12, 1 ) # Bottom wall   x          x
+    #                                      xxxxxxxxxxxx
+    
+    pc = self.hal.batt_pc()
+    if pc is None:
+      # If we didn't get a percentage, we probably have VBUS
+      txt = 'USB'
+    else:
         
-        # Draw the bars
-        for i in range(bars):
-          v( x-11+i, y+1, 5, 1 )
-        
-        # Percentage text
-        t = f'{p}%'
+      # How full is the battery?
+      bars = ( pc // 10 )
       
-      disp.text( t, x - 12 -( 8*len(t) ), y, 1 )
-      disp.text( f'{round(self.hal.hw.voltage_stable(),4)}v', x-47, y+8, 1 )
-    self._oled_idle.add( batt )
+      # Draw the bars
+      for i in range(bars):
+        v( x-11+i, y+1, 5, 1 )
+      
+      # Percentage text
+      txt = f'{p}%'
     
-    # Corner pixel to indicate eink busy, direct from Pin
-    bv = self.hal.eink.Busy.value
-    def eb(disp):
-      if bv() == 0:
-        disp.text( 'e', 120,24, 1 )
-    self._oled_idle.add( eb )
+    t( txt, x - 12 -( 8*len(txt) ), y, 1 )
+    t( f'{round(self.hal.hw.voltage_stable(),4)}v', x-47, y+8, 1 )
     
-    # Memory usage monitor
+    
+    ### EINK BUSY INDICATOR ###
+    #
+    # Icon to indicate eink busy, direct from Pin
+    if self.hal.eink.Busy.value() == 0:
+      t( 'e', 120,24, 1 )
+    
+    
+    ### MEMORY USAGE % ###
+    #
     ma = gc.mem_alloc
-    mf = gc.mem_free
-    memlog = bytearray(32)
-    mptr = bytearray(1) # has to be object to be visible by function
-    def mem(disp):
-      long[0] = ma() # Need longs.  233664 > 65535
-      long[1] = mf()
-      disp.text( f'M: {round( ( long[0] / ( long[0]+long[1] ) ) * 100 )}%', 0,0, 1 )
-    def mem2(disp):
-      
-      # Record current mem at mptr
-      memlog[mptr[0]] = gc.mem_alloc() // 14604
-      
-      disp.rect( 0,16, 32,16, 0, True ) # Blank out our rectangle
-      disp.vline( 33,16, 16, 1 ) # axis line
-      
-      # Start at the beginning
-      mptr[0] += 1
-      mptr[0] %= 32
-      
-      # Loop through memlog
-      for i in range(32):
-        disp.pixel( i, 32-memlog[mptr[0]], 1 )
-        mptr[0] += 1
-        mptr[0] %= 32
-    self._oled_idle.add( mem )
-    self._oled_idle.add( mem2 )
+    t( f'M: { ( ma() * 100 ) // _MEM_TOTAL }%', 0,0, 1 )
     
-    # Add renderer for outstanding save action
-    def save(disp):
-      
-      if self.character is None:
-        return
-      
-      # Where? (top left)
+    
+    ### MEMORY HISTORY GRAPH ###
+    #
+    mlen = len(memlog) - 1
+    mptr = memlog[mlen] # Pointer is last element of memlog
+    
+    # Record current mem usage (on a scale of 0-16) at mptr
+    memlog[mptr] = ( ma() << 4 ) // _MEM_TOTAL
+    
+    # Set up the graph
+    r( 0,16, 32,16, 0, True ) # Blank out our rectangle
+    v( 33,16, 16, 1 ) # axis line
+    
+    # Start at the beginning
+    mptr = ( mptr+1 ) % mlen
+    
+    # Loop through memlog
+    for i in range(mlen):
+      p( i, mlen-memlog[mptr], 1 )
+      mptr = ( mptr+1 ) % mlen
+    
+    # Store the updated mptr
+    memlog[mlen] = mptr
+    
+    
+    ### SAVE INDICATOR ###
+    #
+    # Displays whenever a save is pending
+    #
+    if self.character is not None:
+      # Top left corner
       x = 35
       y = 16
-      
-      # If we aren't showing the icon
       if not self.character.is_saving():
-        disp.rect(x,y, 12,12, 0, True ) # Blank out the area
-        return
-      
-      # Localisation
-      v = disp.vline
-      h = disp.hline
-      r = disp.rect
-      p = disp.pixel
-      
-      # Draw a 12x12 floppy disk icon
-      v(x,    y+1,   10, 1 ) # Left wall
-      h(x+1,  y+11,  10, 1 ) # Bottom
-      v(x+11, y+10,  -9, 1 ) # Right wall
-      p(x+10, y+1, 1 )       # Corner
-      h(x+9,  y,     -9, 1 ) # Top
-      r(x+2, y+7, 8,5, 1, False ) # Label
-      r(x+3, y,   6,4, 1, False ) # Shield outline
-      r(x+4, y+1, 2,2, 1, False ) # Shield fill
-    self._oled_idle.add( save )
+        r(x,y, 12,12, 0, True ) # Blank out the area
+      else:
+        # Draw a 12x12 floppy disk icon
+        v(x,    y+1,   10, 1 ) # Left wall
+        h(x+1,  y+11,  10, 1 ) # Bottom
+        v(x+11, y+10,  -9, 1 ) # Right wall
+        p(x+10, y+1, 1 )       # Corner
+        h(x+9,  y,     -9, 1 ) # Top
+        r(x+2, y+7, 8,5, 1, False ) # Label
+        r(x+3, y,   6,4, 1, False ) # Shield outline
+        r(x+4, y+1, 2,2, 1, False ) # Shield fill
+    
+    
+    ### DONE ###
+    oled.show()
   
   # Triggers shutdown
   def power_off(self):
@@ -263,7 +260,7 @@ class Gadget:
       # Takes a framebuffer and a list of chars to show
       # Returns as many chars as it actually did show
       chars = gfx.draw_char_select( self.hal.eink, self._find_chars() )
-      if not _DEBUG_DISABLE_EINK:
+      if _DEBUG_ENABLE_EINK:
         self.hal.eink_send_refresh()
       #print(chars)
       
@@ -275,13 +272,13 @@ class Gadget:
       def set_char( charid ):
         
         # Ignore character choice if the SD card has gone away
-        if not self.hal.sd.has_card():
+        if not self._sd_mounted.is_set():
           return
         
         # Set it up
         from .character import Character
         cobj[0] = Character( self.hal, chars[ charid ]['dir'] )
-        if not _DEBUG_DISABLE_EINK:
+        if _DEBUG_ENABLE_EINK:
           cobj[0].draw_eink()
         cobj[0].draw_mtx()
         cobj[0].show_curr_hp()
@@ -523,60 +520,13 @@ class Gadget:
       self._battery_low_waiter(),
     ))
     
-    def sd_plug():
-      
-      # Remove any existing SD error message
-      if self._nosdcr is not None:
-        self.hal.unregister(self._nosdcr)
-        self._nosdcr = None
-      
-      # Try to mount
-      e = self._try_mount_sd()
-      if e > 0:
-        self._nosdcr = self.hal.register(
-          priority=_HAL_PRIORITY_NOSD,
-          features=('oled',),
-          callback=lambda:self._render_sd_error( _SD_ERRORS[e] )
-        )
-      
-    def sd_unplug():
-      
-      # Tidy up the mountpoint
-      if self._sd_is_mounted():
-        vfs.umount( SD_ROOT )
-      
-      # Remove any existing SD error message
-      if self._nosdcr is not None:
-        self.hal.unregister(self._nosdcr)
-      
-      # Register the new error
-      self._nosdcr = self.hal.register(
-        priority=_HAL_PRIORITY_NOSD,
-        features=('oled',),
-        callback=lambda:self._render_sd_error( _SD_ERRORS[1] )
-      )
-    
-    #sd = asyncio.create_task(self._sd_plug_waiter())
-    # Set up triggers for hot plug/unplug
-    self.hal.sd.init( sd_plug, sd_unplug )
-    
-    # Try to mount the SD card
-    # TODO: Why does the oled warning get immediately overwritten by the idle screen?
-    # Try to mount
-    e = self._try_mount_sd()
-    if e > 0:
-      self._nosdcr = self.hal.register(
-        priority=_HAL_PRIORITY_NOSD,
-        features=('oled',),
-        callback=lambda:self._render_sd_error( _SD_ERRORS[e] )
-      )
-      return
-    
     # Oled idle stuff
-    self._oled_idle = set()
-    self._setup_oled_renderers()
     oledcr = self.hal.register( priority=_HAL_PRIORITY_IDLE, features=('oled',), callback=self._oled_idle_render )
     self._oled_idle_task = asyncio.create_task( self._oled_runner(oledcr) )
+    
+    # Set up the SD manager and wait for the card to be ready
+    sd = asyncio.create_task( self._wait_mount_sd() )
+    await self._sd_mounted.wait()
     
     # Kick off the main stuff
     phases = asyncio.create_task(asyncio.gather(
@@ -591,39 +541,40 @@ class Gadget:
     await self._exit_loop.wait()
     print('Exiting.  Adios!')
   
-  # Do we have some filesystem mounted at the SD mountpoint?
-  def _sd_is_mounted(self) -> bool:
-    ok = False
-    for mp in vfs.mount():
-      if mp[1] == SD_ROOT:
-        ok = True
-        break
-    return ok
-  
-  # Check if the SD filesystem is OK
-  # 0 = OK
-  # Ref _SD_ERRORS for other codes
-  def _sd_fs_valid(self) -> int:
-    
-    # If it's not mounted then we definitely don't have a valid fs
-    if not self._sd_is_mounted():
-      return 2
-    
-    # Is the characters directory  where we expect it to be?
-    if not ( self.file_root / CHAR_SUBDIR ).is_dir():
-      return 3
-    
-    # Success
-    return 0
+  # Handles mounting/unbmounting the SD card in response to un/plug events from the driver.
+  # Sets/clears the _sd_mounted event.
+  async def _wait_mount_sd(self):
+    while True:
+      
+      # Do we need to wait for the SD card?
+      if self.hal.get_sd_status() > 0: # yes
+        await self.hal.sd.card_ready.wait() # Wait for it to be fixed
+      
+      # SD card should now be ready
+      
+      # Try to mount the SD card
+      if self._try_mount_sd() == 0:
+        self._sd_mounted.set()
+      
+      # Wait for the card to be unplugged
+      await self.hal.sd.card_absent.wait()
+      
+      # Tidy up the mountpoint
+      if self._sd_is_mounted():
+        vfs.umount( SD_ROOT )
+      
+      # Clear this flag
+      self._sd_mounted.clear()
   
   # Attempt to mount the SD.  Does all checks and returns result.
   # 0 = Success
-  # Ref _SD_ERRORS for other codes
+  # Ref _SD_ERRORS (in gfx.py) for other codes
   def _try_mount_sd(self) -> int:
     
     # Check if there's an SD, otherwise die
-    if not self.hal.sd.has_card():
-      return 1
+    e = self.hal.get_sd_status()
+    if e > 0:
+      return e
     
     # Mount, if necessary
     if not self._sd_is_mounted():
@@ -640,64 +591,30 @@ class Gadget:
     print('Mounted SD card on',SD_ROOT)
     return 0
   
-  # TODO: Move this to gfx.py?
-  def _render_sd_error(self,text):
-      
-      # Set up oled ref
-      o = self.hal.oled
-      o.fill(0)
-      
-      # No SD graphic
-      # TODO: Replace with blit_onto()
-      fb = img.load('/assets/nosd.pi')
-      o.blit(fb,0,0)
-      
-      # Display message
-      lines = text.split('\n')
-      h = min( len(lines)*8, 32 )
-      y = ( 32 - h ) // 2
-      for line in lines:
-        o.text( line, 58,y )
-        y += 8
-      
-      o.show()
+  # Check if the SD filesystem is OK
+  # 0 = OK
+  # Ref _SD_ERRORS (in gfx.py) for other codes
+  def _sd_fs_valid(self) -> int:
+    
+    # If it's not mounted then we definitely don't have a valid fs
+    if not self._sd_is_mounted():
+      return 2
+    
+    # Is the characters directory  where we expect it to be?
+    if not ( self.file_root / CHAR_SUBDIR ).is_dir():
+      return 3
+    
+    # Success
+    return 0
   
-  '''
-  async def _sd_plug_waiter(self):
-    while True:
-      await self.hal.sd_plug.wait()
-      
-      # Remove any existing SD error message
-      if self._nosdcr is not None:
-        self.hal.unregister(self._nosdcr)
-        self._nosdcr = None
-      
-      # Try to mount
-      e = self._mount_sd()
-      if e > 0:
-        self._nosdcr = self.hal.register(
-          priority=_HAL_PRIORITY_NOSD,
-          features=('oled',),
-          callback=lambda:self._render_sd_error( _SD_ERRORS[e] )
-        )
-      
-      await self.hal.sd_unplug.wait()
-      
-      # Tidy up the mountpoint
-      if self._sd_is_mounted():
-        vfs.umount( SD_ROOT )
-      
-      # Remove any existing SD error message
-      if self._nosdcr is not None:
-        self.hal.unregister(self._nosdcr)
-      
-      # Register the new error
-      self._nosdcr = self.hal.register(
-        priority=_HAL_PRIORITY_NOSD,
-        features=('oled',),
-        callback=lambda:self._render_sd_error( _SD_ERRORS[1] )
-      )
-  '''
+  # Do we have some filesystem mounted at the SD mountpoint?
+  def _sd_is_mounted(self) -> bool:
+    ok = False
+    for mp in vfs.mount():
+      if mp[1] == SD_ROOT:
+        ok = True
+        break
+    return ok
   
   # Reacts to the "battery charging" status changing (currently empty)
   async def _battery_charge_waiter(self):
