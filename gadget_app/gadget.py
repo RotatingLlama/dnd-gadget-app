@@ -2,7 +2,7 @@
 # For Micropython v1.26
 #
 # T. Lloyd
-# 14 Sep 2025
+# 15 Sep 2025
 
 
 # TO USE:
@@ -16,9 +16,7 @@
 
 # Builtin libraries
 import asyncio
-from array import array
-#import os
-#import time
+#from array import array
 import gc
 from micropython import const
 import vfs
@@ -38,12 +36,6 @@ _DEBUG_ENABLE_EINK = const(True)
 MANDATORY_CHAR_FILES = [ # Files that must exist in a character directory for it to be recognised
   CHAR_STATS,
 ]
-
-# HAL priority levels
-_HAL_PRIORITY_IDLE = const(0)
-_HAL_PRIORITY_NOSD = const(5)
-_HAL_PRIORITY_MENU = const(10)
-_HAL_PRIORITY_SHUTDOWN = const(100)
 
 # In ms.  How often to redraw the OLED idle screen
 _OLED_IDLE_REFRESH = const(500)
@@ -293,7 +285,7 @@ class Gadget:
         btn = set_char,
         back = lambda x: self.hal.needle.wobble() # self.power_off() # self.hal.hw.empty_battery.set()
       )
-      cr = self.hal.register( priority=_HAL_PRIORITY_MENU, features=('needle','input',), input_target=csm.input_target )
+      cr = self.hal.register( priority=HAL_PRIORITY_MENU, features=('needle','input',), input_target=csm.input_target )
       #self.hw.init( cw=csm.cw, ccw=csm.ccw, btn=csm.btn, sw=csm.back )
       
       # Wait until the character is chosen
@@ -475,7 +467,7 @@ class Gadget:
         btn = rmm[2].next_item
       )
       #self.hw.init( cw=rm.cw, ccw=rm.ccw, btn=rm.btn, sw=rm.back )
-      cr = self.hal.register( priority=_HAL_PRIORITY_MENU, features=('input',), input_target=rm.input_target )
+      cr = self.hal.register( priority=HAL_PRIORITY_MENU, features=('input',), input_target=rm.input_target )
       
       # Assign
       self.menu = rm
@@ -521,8 +513,8 @@ class Gadget:
     ))
     
     # Oled idle stuff
-    oledcr = self.hal.register( priority=_HAL_PRIORITY_IDLE, features=('oled',), callback=self._oled_idle_render )
-    self._oled_idle_task = asyncio.create_task( self._oled_runner(oledcr) )
+    oledcr = self.hal.register( priority=HAL_PRIORITY_IDLE, features=('oled',), callback=self._oled_idle_render )
+    oled_idle = asyncio.create_task( self._oled_runner(oledcr) )
     
     # Set up the SD manager and wait for the card to be ready
     sd = asyncio.create_task( self._wait_mount_sd() )
@@ -541,7 +533,7 @@ class Gadget:
     await self._exit_loop.wait()
     print('Exiting.  Adios!')
   
-  # Handles mounting/unbmounting the SD card in response to un/plug events from the driver.
+  # Handles mounting/unmounting the SD card in response to un/plug events from the driver.
   # Sets/clears the _sd_mounted event.
   async def _wait_mount_sd(self):
     while True:
@@ -667,7 +659,7 @@ class Gadget:
     et = asyncio.create_task( self.hal.eink.refresh() )
     
     # Wait message
-    cr = self.hal.register( priority=_HAL_PRIORITY_SHUTDOWN, features=('oled',) )
+    cr = self.hal.register( priority=HAL_PRIORITY_SHUTDOWN, features=('oled',) )
     oled = self.hal.oled
     oled.fill(0)
     oled.text( 'Please wait...', 0,0, 1 )

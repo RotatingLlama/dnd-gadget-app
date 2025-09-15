@@ -2,7 +2,7 @@
 # Some original code in einktest.py
 #
 # T. Lloyd
-# 14 Sep 2025
+# 15 Sep 2025
 
 from micropython import const
 import asyncio
@@ -12,10 +12,10 @@ import asyncio
 from gadget_hw import HW
 
 # Colour for border of e-eink panel
-EINK_BORDER_COLOUR = const(0)
+_EINK_BORDER_COLOUR = const(0)
 
 # Frequency to set the needle to for a wobbling effect
-NEEDLE_WOBBLE_SPEED = const(8) # Least freq supported by hardware
+_NEEDLE_WOBBLE_SPEED = const(8) # Least freq supported by hardware
 
 class HAL:
   
@@ -142,7 +142,7 @@ class HAL:
   async def _eink_updater(self):
     
     # Set the border colour at startup
-    await self.eink.border(c=EINK_BORDER_COLOUR)
+    await self.eink.border(c=_EINK_BORDER_COLOUR)
     
     while True:
       
@@ -263,6 +263,6 @@ class Needle:
     
     # Enact the wobble
     if wob == True:
-      self.hw.set_needle_frequency( NEEDLE_WOBBLE_SPEED )
+      self.hw.set_needle_frequency( _NEEDLE_WOBBLE_SPEED )
     else:
       self.hw.set_needle_frequency()

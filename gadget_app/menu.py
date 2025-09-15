@@ -2,12 +2,12 @@
 # For OLED and LED Matrix displays
 #
 # T. Lloyd
-# 29 Jul 2025
+# 15 Sep 2025
 
 from gc import collect as gc_collect
 import time
 
-from .common import DeferredTask
+from .common import DeferredTask, HAL_PRIORITY_MENU
 
 # Drives the needle to select from a number of equally-spaced positions across its arc
 # hal: the HAL object
@@ -18,7 +18,7 @@ class NeedleMenu:
   
   def __init__(self,hal,n,btn,back):
     self.hal = hal
-    #self.cr = hal.register( priority=1, features=('input','needle'), input_target=self.input_target )
+    #self.cr = hal.register( priority=HAL_PRIORITY_MENU, features=('input','needle'), input_target=self.input_target )
     self.i = 0
     self.max_i = n - 1
     self.f_btn = btn
@@ -177,7 +177,7 @@ class OledMenu:
   def _register(self):
     self.parent.child = self
     self._cs = self.hal.register(
-      priority=1,
+      priority=HAL_PRIORITY_MENU,
       features=('input','oled',),
       input_target=self.input_target,
       callback=lambda: self.items[ self.s ].render_title(),

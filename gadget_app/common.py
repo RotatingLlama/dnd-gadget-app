@@ -1,16 +1,21 @@
 # Misc common data and code
 #
 # T. Lloyd
-# 11 Sep 2025
+# 15 Sep 2025
 
 from micropython import const
 import asyncio
 import time
 
-#SD_ROOT = const('/internal')
+# HAL priority levels
+HAL_PRIORITY_IDLE = const(0)
+HAL_PRIORITY_MENU = const(10)
+HAL_PRIORITY_SHUTDOWN = const(100)
+
+# SD directory structure
 SD_ROOT = const('/sd')
 SD_DIR = const('TTRPG')
-
+#
 CHAR_SUBDIR = const('Characters')
 CHAR_STATS = const('stats.txt')
 CHAR_HEAD = const('head.2ink')

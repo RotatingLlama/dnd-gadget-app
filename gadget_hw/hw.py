@@ -2,7 +2,7 @@
 # Some original code in einktest.py
 #
 # T. Lloyd
-# 13 Sep 2025
+# 15 Sep 2025
 
 # Standard libraries
 from machine import I2C, SPI, ADC, PWM, Pin
@@ -25,23 +25,23 @@ _none_func = lambda x: None
 _cb_input = _none_func
 
 # Needle fine-tuning parameters
-NEEDLE_OFFSET = const(0)
-NEEDLE_FACTOR = const(0.975)
+_NEEDLE_OFFSET = const(0)
+_NEEDLE_FACTOR = const(0.975)
 #
-NEEDLE_DEF_FREQ = const(30000)
-NEEDLE_DEF_DUTY = const(1)
+_NEEDLE_DEF_FREQ = const(30000)
+_NEEDLE_DEF_DUTY = const(1)
 
 # Battery monitoring
 #   / 65535 normalises the ADC reading to a float between 0.0 and 1.0
 #   x 3.3 scales the value up to the actual voltage read at the pin
 #   x 3 scales up to the top of the voltage divider (to V_SYS)
 #   Expect it to be a bit below 5v on USB due to presence of MBR120VLSFT1G Schottky (Vf=340 mV)
-VSYS_MULTIPLIER = const(0.0001510643) # ( 3.3 * 3 ) / 65535
-VSYS_HYST_VALUE = const(0.1) # Hysteresis voltage - normally 0.06 is ok, but fluctuates more during eink refresh (0.0797 observed)
-BATT_MIN = const(3.5) # Consider this voltage (or less) to be 0%
-BATT_LOW = const(3.6) # Battery is "low" below this voltage (about 14%)
-BATT_MAX = const(4.2) # Consider this voltage (or more) to be 100%
-BATT_USB = const(4.75) # If it's higher than this, assume we're plugged in
+_VSYS_MULTIPLIER = const(0.0001510643) # ( 3.3 * 3 ) / 65535
+_VSYS_HYST_VALUE = const(0.1) # Hysteresis voltage - normally 0.06 is ok, but fluctuates more during eink refresh (0.0797 observed)
+_BATT_MIN = const(3.5) # Consider this voltage (or less) to be 0%
+_BATT_LOW = const(3.6) # Battery is "low" below this voltage (about 14%)
+_BATT_MAX = const(4.2) # Consider this voltage (or more) to be 100%
+_BATT_USB = const(4.75) # If it's higher than this, assume we're plugged in
 
 class HW:
   
@@ -93,8 +93,8 @@ class HW:
     
     # Needle
     DEFS.NEEDLE.init( Pin.OUT, value=0 )
-    self.needle = PWM( DEFS.NEEDLE, freq=NEEDLE_DEF_FREQ, duty_u16=NEEDLE_DEF_DUTY )
-    self._needle_val = NEEDLE_DEF_DUTY
+    self.needle = PWM( DEFS.NEEDLE, freq=_NEEDLE_DEF_FREQ, duty_u16=_NEEDLE_DEF_DUTY )
+    self._needle_val = _NEEDLE_DEF_DUTY
     
     # Eink
     self.eink = eink.EInk(
@@ -139,7 +139,7 @@ class HW:
     assert pc <= 1
     
     # Conversion
-    val = round( 65535 * pc * NEEDLE_FACTOR ) + NEEDLE_OFFSET
+    val = round( 65535 * pc * _NEEDLE_FACTOR ) + _NEEDLE_OFFSET
     
     # Doesn't like zeroes
     if val == 0:
@@ -152,7 +152,7 @@ class HW:
     return self._needle_val / 65535
   
   # Get/set needle frequency
-  def set_needle_frequency( self, freq=NEEDLE_DEF_FREQ ):
+  def set_needle_frequency( self, freq=_NEEDLE_DEF_FREQ ):
     self.needle.freq(freq)
   def get_needle_frequency( self ):
     return self.needle.freq()
@@ -219,11 +219,11 @@ class HW:
   async def _vsys_hyst(self) -> None:
     
     # Hysteresis value, converted to ADC uint16 numbers
-    h:int = round( VSYS_HYST_VALUE / VSYS_MULTIPLIER )
+    h:int = round( _VSYS_HYST_VALUE / _VSYS_MULTIPLIER )
     
     # Low battery value
-    empty:int = BATT_MIN // VSYS_MULTIPLIER
-    low:int = BATT_LOW // VSYS_MULTIPLIER
+    empty:int = _BATT_MIN // _VSYS_MULTIPLIER
+    low:int = _BATT_LOW // _VSYS_MULTIPLIER
     
     # Localisation
     adc = self._vsys.read_u16 # Function to get raw ADC value
@@ -281,11 +281,11 @@ class HW:
   
   # Returns the supply voltage value
   def voltage_raw(self) -> float:
-    return ( self._vsys.read_u16() * VSYS_MULTIPLIER )
+    return ( self._vsys.read_u16() * _VSYS_MULTIPLIER )
   
   # Returns a voltage figure with some hysteresis to stop it fluctuating
   def voltage_stable(self) -> float:
-    return ( self._vsys_val * VSYS_MULTIPLIER )
+    return ( self._vsys_val * _VSYS_MULTIPLIER )
   
   # Returns an integer 0-100 representing current battery level
   # Returns None if this can't be read right now (eg. due to VBUS)
@@ -293,17 +293,17 @@ class HW:
     v = self.voltage_stable()
     
     # Are we powered via VBUS (Pico USB)?
-    if v >= BATT_USB:
+    if v >= _BATT_USB:
       return None
     
     # Clamp to limits
-    if v >= BATT_MAX:
-      v = BATT_MAX
-    elif v <= BATT_MIN:
-      v = BATT_MIN
+    if v >= _BATT_MAX:
+      v = _BATT_MAX
+    elif v <= _BATT_MIN:
+      v = _BATT_MIN
     
     # Return a percentage
-    return round( 100 * ( v - BATT_MIN ) / ( BATT_MAX - BATT_MIN ) )
+    return round( 100 * ( v - _BATT_MIN ) / ( _BATT_MAX - _BATT_MIN ) )
   
   # Start a loop, clear the eink, exit
   # Only used to clear the display without running the app

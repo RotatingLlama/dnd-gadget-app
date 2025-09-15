@@ -18,59 +18,60 @@ import img
 from .common import CHAR_HEAD, CHAR_BG
 
 # ASSETS
-IMG_CHOOSE_W = const('/assets/choose_w.2ink')
-IMG_CHOOSE_R = const('/assets/choose_r.2ink')
-IMG_SKULL = const('/assets/skull.2ink')
-IMG_LOWBATT = const('/assets/low_batt.2ink')
-IMG_DEADBATT = const('/assets/deadbatt.2ink')
+_IMG_CHOOSE_W = const('/assets/choose_w.2ink')
+_IMG_CHOOSE_R = const('/assets/choose_r.2ink')
+_IMG_SKULL    = const('/assets/skull.2ink')
+_IMG_LOWBATT  = const('/assets/low_batt.2ink')
+_IMG_DEADBATT = const('/assets/deadbatt.2ink')
+_IMG_NOSD     = const('/assets/nosd.pi')
 
 # Universal constants
 # MP-1.24.1 seems to round floats to 7 d.p.
 # These values are consistent with each other and are collectively as accurate as possible within the constraints
-PI_2 = const(1.5707963)
-PI   = const(3.1415926)
-TAU  = const(6.2831852)
-DEG = const(0.01745329) # pi/180
+_PI_2 = const(1.5707963)
+_PI   = const(3.1415926)
+_TAU  = const(6.2831852)
+_DEG  = const(0.01745329) # pi/180
 
 # Character heads
-CHAR_HEAD_SIZE = const(64)
-MAX_CHAR_HEADS = const(6)
+_CHAR_HEAD_SIZE = const(64)
+_MAX_CHAR_HEADS = const(6)
 
 # Geometry for HP bar
 X = const(184)
 Y = const(292)
 #
-ACENTRE = const( 0 ) # Angle of midpoint of arc (relative to 12 o'clock)
-ATOTAL  = DEG * 100 # Total angle made by arc
-ASTART  = ACENTRE - (ATOTAL/2) # Angle of start of arc
-AEND    = ASTART + ATOTAL # Angle of end of arc
+_ACENTRE = const( 0 ) # Angle of midpoint of arc (relative to 12 o'clock)
+_ATOTAL  = const( _DEG * 100 ) # Total angle made by arc
+_ASTART  = const( _ACENTRE - (_ATOTAL/2) ) # Angle of start of arc
+_AEND    = const( _ASTART + _ATOTAL ) # Angle of end of arc
 #
 RI = const(157)
-ARC_THICKNESS = const(10)
+_ARC_THICKNESS = const(10)
 #
-ARC2_THICKNESS = const(3)
-ARC2_RI = const(171) # round(RI + ARC_THICKNESS * 1.4)
+_ARC2_THICKNESS = const(3)
+_ARC2_RI = const(171) # round(RI + _ARC_THICKNESS * 1.4)
 
 # Geometry for titles
-TIT_MIDPOINT_Y = const( 240 - (CHAR_HEAD_SIZE//2) )
+_TIT_MIDPOINT_Y = const( 240 - (_CHAR_HEAD_SIZE//2) )
 #TIT_Y = const(20)
 #T1_C = const(1)
 #T2_dY = const(14)
 #T2_C = const(2)
 
 # Geometry for charges labels
-CHG_X = const(3)
-CHG_Y = const(0)
-CHG_dY = const(19.7)
-CHG_C = const(1)
+_CHG_X = const(3)
+_CHG_Y = const(0)
+_CHG_dY = const(19.7)
+_CHG_C = const(1)
 
 # Geometry for spell slot indicator
-SPL_X = const(0)
-SPL_W = const(5)
-SPL_Y = const(239)
-SPL_dY = const(12)
-SPL_OS = const(-8)
-SPL_C = const(1)
+_SPL_X = const(0)
+_SPL_W = const(5)
+_SPL_Y = const(239)
+_SPL_dY = const(12)
+_SPL_OS = const(-8)
+_SPL_C = const(1)
 
 # Rules (LUTs) for chaos_fill()
 # Each is 64 elements long, defining a value for every possible combination of 6 bits
@@ -211,8 +212,8 @@ def drawThickArc( fb, x, y, ro, ri, start, end, c=1, scratch=None ):
     raise ValueError('c must be between 0 and 2')
   
   # Permit (and correct) negative start/end
-  start = start % TAU
-  end = end % TAU
+  start = start % _TAU
+  end = end % _TAU
   if start == end:
     raise ValueError('Start and End cannot be the same!')
   
@@ -220,11 +221,11 @@ def drawThickArc( fb, x, y, ro, ri, start, end, c=1, scratch=None ):
   # Counting clockwise from TDC
   #
   # Start and end quadrants
-  qstart = int( start // PI_2 )
-  qend = int( end // PI_2 )
+  qstart = int( start // _PI_2 )
+  qend = int( end // _PI_2 )
   
   # Deal with edge cases
-  if end % PI_2 == 0:
+  if end % _PI_2 == 0:
     qend -= 1
   if qend == -1:
     qend = 3
@@ -301,7 +302,7 @@ def drawThickArc( fb, x, y, ro, ri, start, end, c=1, scratch=None ):
   #mend = tan( end )     # Distance from axis / length along axis
   
   # Draw the start cut-off ramp
-  mstart = tan( start % PI_2 ) # Gradient; Opposite / adjacent
+  mstart = tan( start % _PI_2 ) # Gradient; Opposite / adjacent
   j=0 # Distance from centre
   if qstart == 0: # Top right; go up y-axis then across
     scratch.vline( centre[0], 0, ro, 0 )
@@ -328,7 +329,7 @@ def drawThickArc( fb, x, y, ro, ri, start, end, c=1, scratch=None ):
       j += 1
   
   # Draw the end cut-off ramp
-  mend = tan( -end % PI_2 ) # Gradient; Opposite / adjacent
+  mend = tan( -end % _PI_2 ) # Gradient; Opposite / adjacent
   j=0 # Distance from centre
   if qend == 0: # Top right; go across x-axis then up
     scratch.hline( centre[0]+1, centre[1], ro, 0 )
@@ -380,10 +381,10 @@ def drawThickArc( fb, x, y, ro, ri, start, end, c=1, scratch=None ):
 # Returns tuple with midpoint of top of tick
 def tick(fb, angle,c=1,direction=0):
   
-  TICK_RI = RI + ARC_THICKNESS * 1.4
-  TICK_LENGTH = ARC_THICKNESS * 1.1
-  TICK_THICK  = ARC_THICKNESS * 0.5
-  TICK_ANGLE = DEG * 3
+  TICK_RI = RI + _ARC_THICKNESS * 1.4
+  TICK_LENGTH = _ARC_THICKNESS * 1.1
+  TICK_THICK  = _ARC_THICKNESS * 0.5
+  TICK_ANGLE = _DEG * 3
   TICK_TEXT_PT = 8 # Pixels past end of tick for text point
   
   # Avoid calculating these multiple times
@@ -494,38 +495,38 @@ def draw_play_screen( fb, char, lowbatt=False ):
   
   ### CHARACTER HEAD ###
   if lowbatt:
-    chs2 = CHAR_HEAD_SIZE//2
-    img.blit_onto( fb, X-chs2, TIT_MIDPOINT_Y-chs2, IMG_LOWBATT )
+    chs2 = _CHAR_HEAD_SIZE//2
+    img.blit_onto( fb, X-chs2, _TIT_MIDPOINT_Y-chs2, _IMG_LOWBATT )
   else:
     if head.is_file():
-      chs2 = CHAR_HEAD_SIZE//2
-      img.blit_onto( fb, X-chs2, TIT_MIDPOINT_Y-chs2, str( head ) )
+      chs2 = _CHAR_HEAD_SIZE//2
+      img.blit_onto( fb, X-chs2, _TIT_MIDPOINT_Y-chs2, str( head ) )
     else:
-      fb.rect( X-1, TIT_MIDPOINT_Y-1, 3, 3, 2, True ) # dot
+      fb.rect( X-1, _TIT_MIDPOINT_Y-1, 3, 3, 2, True ) # dot
       chs2 = 2
   
   ######## TITLES ########
   
   #f = eink.Font('/assets/Gallaecia_variable.2f')
   #f.write_to( fb, 'BONK', *XY, (1,) )
-  fb.text( stats['title'], X + chs2 + 5, TIT_MIDPOINT_Y-4, 1 )
+  fb.text( stats['title'], X + chs2 + 5, _TIT_MIDPOINT_Y-4, 1 )
   #f = eink.Font('/assets/Vermin.2f')
   #f.write_to( fb, 'L3 Artificer', XY[0], XY[1]+14, (2,) )
   text_len_px = len(stats['subtitle']) * 8
-  fb.text( stats['subtitle'], X - (chs2+text_len_px+5), TIT_MIDPOINT_Y-4, 1 )
+  fb.text( stats['subtitle'], X - (chs2+text_len_px+5), _TIT_MIDPOINT_Y-4, 1 )
   
   ######## SPELLS BAR ########
   
-  height = round( SPL_dY * len(stats['spells']) ) + SPL_OS
-  fb.hline( SPL_X, SPL_Y, SPL_W, SPL_C )
-  fb.vline( SPL_X+SPL_W, SPL_Y, -height-1, SPL_C )
-  fb.hline( SPL_X, SPL_Y-height, SPL_W, SPL_C )
+  height = round( _SPL_dY * len(stats['spells']) ) + _SPL_OS
+  fb.hline( _SPL_X, _SPL_Y, _SPL_W, _SPL_C )
+  fb.vline( _SPL_X+_SPL_W, _SPL_Y, -height-1, _SPL_C )
+  fb.hline( _SPL_X, _SPL_Y-height, _SPL_W, _SPL_C )
   del height
   
   ######## CHARGES ########
   
   for i,chg in enumerate( stats['charges'] ):
-    fb.text( chg['name'], CHG_X, CHG_Y+round( CHG_dY * i ), CHG_C )
+    fb.text( chg['name'], _CHG_X, _CHG_Y+round( _CHG_dY * i ), _CHG_C )
   del i,chg
 
   ######## HP BAR ########
@@ -534,8 +535,8 @@ def draw_play_screen( fb, char, lowbatt=False ):
   gc_collect()
   
   # Fixed geometry (most of this is const() at start of file)
-  RO = RI + ARC_THICKNESS
-  ARC2_RO = ARC2_RI + ARC2_THICKNESS
+  RO = RI + _ARC_THICKNESS
+  ARC2_RO = _ARC2_RI + _ARC2_THICKNESS
   
   if hp[2] > 0: # If we have temp HP
     
@@ -550,24 +551,24 @@ def draw_play_screen( fb, char, lowbatt=False ):
     r_tmax = hp[3] / max_range
     
     # Angular positions
-    a_half = ASTART + ( ATOTAL * r_half )
-    a_curr = ASTART + ( ATOTAL * r_curr )
-    a_max  = ASTART + ( ATOTAL * r_max )
-    a_tmax = a_curr + ( ATOTAL * r_tmax )
+    a_half = _ASTART + ( _ATOTAL * r_half )
+    a_curr = _ASTART + ( _ATOTAL * r_curr )
+    a_max  = _ASTART + ( _ATOTAL * r_max )
+    a_tmax = a_curr + ( _ATOTAL * r_tmax )
     
     # Draw solid arc up to max HP
-    drawThickArc( fb, X, Y, RO, RI, ASTART, a_max, 1 )
+    drawThickArc( fb, X, Y, RO, RI, _ASTART, a_max, 1 )
     
     # White out the main arc between current and max HP
     if hp[0] < hp[1]:
       drawThickArc( fb, X, Y, RO-1, RI+1, a_curr, a_max-0.01, 0 )
     
     # Draw second arc depicting temp HP
-    drawThickArc( fb, X, Y, ARC2_RO, ARC2_RI, a_curr, a_tmax, 2 )
+    drawThickArc( fb, X, Y, ARC2_RO, _ARC2_RI, a_curr, a_tmax, 2 )
     
     # Tick at half HP, if there's room
-    #print(f'a_curr - ASTART:{a_curr - ASTART}')
-    if ( a_curr - ASTART ) > 0.4:
+    #print(f'a_curr - _ASTART:{a_curr - _ASTART}')
+    if ( a_curr - _ASTART ) > 0.4:
       pt = tick( fb, (a_half), 1, 0 )
       tick_txt( fb, str(round( hp[0] / 2 )), pt, 1 )
     
@@ -582,17 +583,17 @@ def draw_play_screen( fb, char, lowbatt=False ):
   else: # No temp HP, normal bar
     
     # Angular positions
-    a_q1 = ASTART + ( ATOTAL * 0.25 )
-    a_q2 = ASTART + ( ATOTAL * 0.5 )
-    a_q3 = ASTART + ( ATOTAL * 0.75 )
-    a_q4 = ASTART + ATOTAL
+    a_q1 = _ASTART + ( _ATOTAL * 0.25 )
+    a_q2 = _ASTART + ( _ATOTAL * 0.5 )
+    a_q3 = _ASTART + ( _ATOTAL * 0.75 )
+    a_q4 = _ASTART + _ATOTAL
     
     # Draw solid arc up to max HP
     # Pull back the start slightly, to meet up with the skull
-    drawThickArc( fb, X, Y, RO, RI, ASTART-DEG, a_q4, 1 )
+    drawThickArc( fb, X, Y, RO, RI, _ASTART-_DEG, a_q4, 1 )
     
     # Ticks
-    #tick( ASTART, 1, 1)
+    #tick( _ASTART, 1, 1)
     #
     pt = tick( fb, a_q1, 1, 0 )
     tick_txt( fb, str(round( hp[1] / 4 )), pt, 1 )
@@ -608,10 +609,10 @@ def draw_play_screen( fb, char, lowbatt=False ):
     
   
   # Add the skull
-  skull = img.load( IMG_SKULL )
+  skull = img.load( _IMG_SKULL )
   start = (
-    round( X +RI*sin(ASTART) ),
-    round( Y -RI*cos(ASTART) ),
+    round( X +RI*sin(_ASTART) ),
+    round( Y -RI*cos(_ASTART) ),
   )
   fb.blit( skull, start[0]-16, start[1]-6, 3 )
   
@@ -620,13 +621,13 @@ def draw_play_screen( fb, char, lowbatt=False ):
   #fb.vline(X+1,120,120,1)
   
   # Start tick (skull instead)
-  #tick(ASTART,2,1)
+  #tick(_ASTART,2,1)
   img.save( fb, 'playscreen.2ink')
 
 # Draws the character select screen to the given framebuffer
 # Expects 360x240 2bpp framebuffer
 # Needs chars list from Gadget._find_chars()
-# Returns same list, truncated to only the chars displayed (subject to MAX_CHAR_HEADS)
+# Returns same list, truncated to only the chars displayed (subject to _MAX_CHAR_HEADS)
 def draw_char_select( fb, chars ):
   
   # Fill with a cool background
@@ -636,35 +637,35 @@ def draw_char_select( fb, chars ):
   
   # Do we want red text or white text in our banner?
   if lut_colours[i] == 1:
-    c = IMG_CHOOSE_R
+    c = _IMG_CHOOSE_R
   else:
-    c = IMG_CHOOSE_W
+    c = _IMG_CHOOSE_W
   
   # Add the banner
   img.blit_onto( fb, 0,0, c )
   
   # Truncate list to max length
-  chars = chars[:MAX_CHAR_HEADS]
+  chars = chars[:_MAX_CHAR_HEADS]
   
   # Angular distance between heads
-  da = ATOTAL / ( len(chars) - 1 )
+  da = _ATOTAL / ( len(chars) - 1 )
   
   # Offset to centre of character head (instead of top left)
-  hdos = CHAR_HEAD_SIZE // 2
+  hdos = _CHAR_HEAD_SIZE // 2
   
   # Truncate text names
-  max_name_len = CHAR_HEAD_SIZE // 8 # Assume 8px letter width
+  max_name_len = _CHAR_HEAD_SIZE // 8 # Assume 8px letter width
   
-  a = ASTART
+  a = _ASTART
   for char in chars:
     if char['head'] is not None:
-      x = round( X + ARC2_RI*sin(a) -hdos )
-      y = round( Y - ARC2_RI*cos(a) -hdos )
+      x = round( X + _ARC2_RI*sin(a) -hdos )
+      y = round( Y - _ARC2_RI*cos(a) -hdos )
       img.blit_onto( fb, x, y, char['head'] )
     else:
       txt = char['dir'].name[:max_name_len]
-      x = round( X + ARC2_RI*sin(a) - (len(txt)*4) )
-      y = round( Y - ARC2_RI*cos(a) -4 )
+      x = round( X + _ARC2_RI*sin(a) - (len(txt)*4) )
+      y = round( Y - _ARC2_RI*cos(a) -4 )
       fb.rect(x-2, y-2, len(txt)*8 +4, 12, 2, False )
       fb.rect(x-1, y-1, len(txt)*8 +2, 10, 0, True )
       fb.text( txt, x,y, 1 )
@@ -675,7 +676,7 @@ def draw_char_select( fb, chars ):
 
 # Draws a 'dead battery' graphic to the framebuffer
 def draw_dead_batt(fb):
-  img.load_into( fb.buf, IMG_DEADBATT )
+  img.load_into( fb.buf, _IMG_DEADBATT )
 
 # Render the SD error screen on the oled, with some text.
 def render_sd_error( e:int, oled ):
@@ -684,7 +685,7 @@ def render_sd_error( e:int, oled ):
     
     # No-SD graphic
     # TODO: Replace with blit_onto()
-    fb = img.load('/assets/nosd.pi')
+    fb = img.load( _IMG_NOSD )
     oled.blit(fb,0,0)
     
     # Display message

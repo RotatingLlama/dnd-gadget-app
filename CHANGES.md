@@ -4,18 +4,13 @@ TODO
 GENERAL
 -------
 * BUG: Enter oled menu.  Back out of oled menu.  Can't enter matrix menu now, only oled!
+  - Caused by partial implementation of hal register in menu.py.  Needs Fully implementing.
 * Proper SD card handling
-  x In sd_socket.py, async retries when init fails after plug.  Can just be down to slow insertion.
-  x Full async plug/unplug events that main loop can await, eg. wait for card to be plugged after startup
-  x Figure out a way to get 'bad sd init' from sd_socket.py onto the oled
   - On unplug:
-    x Put warning on oled
     - In char select: prevent any selection.  Don't assume the same characters are still on the card after reinsertion.
     - In play screen: allow normal play, but defer saves until replug.  Create savefile on replug no matter what else is on the card now.
   - On replug:
-    x Init card
     - Reverse the above contingencies
-  x Make the sd status render call be part of the idle screen logic
   - Make render_sd_error() in gfx.py use blit_onto instead of load()
   - Hide 'sd error' that appears on startup, before card is ready
 * Since MP 1.26 floats can be constants.  Roll out const() use where applicable.
