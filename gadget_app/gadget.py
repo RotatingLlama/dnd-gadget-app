@@ -2,7 +2,7 @@
 # For Micropython v1.26
 #
 # T. Lloyd
-# 15 Sep 2025
+# 19 Sep 2025
 
 
 # TO USE:
@@ -25,12 +25,13 @@ import vfs
 from . import pathlib
 
 # Our stuff
-from .common import *
+from .common import CHAR_STATS, SD_ROOT, SD_DIR, CHAR_SUBDIR, CHAR_HEAD, HAL_PRIORITY_MENU, HAL_PRIORITY_IDLE, HAL_PRIORITY_SHUTDOWN
 from . import menu
 from .hal import HAL
+from .character import Character
 from . import gfx
 
-_DEBUG_ENABLE_EINK = const(True)
+_DEBUG_ENABLE_EINK = const(False)
 
 # Character file info
 MANDATORY_CHAR_FILES = [ # Files that must exist in a character directory for it to be recognised
@@ -257,7 +258,7 @@ class Gadget:
       #print(chars)
       
       # This will hold the Character object
-      cobj = [0]
+      cobj:Character = [0]
       
       # Gets called when a character is chosen
       # Gets given an index into the list from _find_chars()
@@ -268,7 +269,6 @@ class Gadget:
           return
         
         # Set it up
-        from .character import Character
         cobj[0] = Character( self.hal, chars[ charid ]['dir'] )
         if _DEBUG_ENABLE_EINK:
           cobj[0].draw_eink()
@@ -285,7 +285,15 @@ class Gadget:
         btn = set_char,
         back = lambda x: self.hal.needle.wobble() # self.power_off() # self.hal.hw.empty_battery.set()
       )
-      cr = self.hal.register( priority=HAL_PRIORITY_MENU, features=('needle','input',), input_target=csm.input_target )
+      
+      # NeedleMenu isn't CR aware, and doesn't need to be, provided its actions are driven only by direct user inputs
+      cr = self.hal.register(
+        priority=HAL_PRIORITY_MENU,
+        features=('needle','input',),
+        input_target=csm.input_target,
+        name='NeedleMenu'
+      )
+      
       #self.hw.init( cw=csm.cw, ccw=csm.ccw, btn=csm.btn, sw=csm.back )
       
       # Wait until the character is chosen
@@ -294,7 +302,7 @@ class Gadget:
       # Make sure this is ready in case of next loop
       done.clear()
       
-      # Unregister with the HAL
+      # NeedleMenu doesn't know when to do this, so do it here
       self.hal.unregister(cr)
       
       # Assign the character
@@ -317,15 +325,68 @@ class Gadget:
       await self.phase_play.wait()
       
       # Localisation
-      rm = menu.RootMenu( self.hal, self.character )
+      rm = menu.RootMenu( self.hal, HAL_PRIORITY_MENU )
       rmm = rm.menus
       char = self.character
       
+      # Create default/idle HAL registration
+      mtx_idle = hal.register(
+        priority=HAL_PRIORITY_IDLE,
+        features=('mtx',),
+        callback=self.character.draw_mtx,
+        name='MtxIdle'
+      )
+      
       # MATRIX MENU #
       
+      # Calculate matrix geometry
+      n_spls = len(char.stats['spells'])
+      n_chgs = min( 16-n_spls, len(char.stats['charges']) )
+      n_rows = n_chgs + n_spls
+      gap = 16 - n_rows
+      
+      # Construct the active rows array
+      activerows = bytearray( n_rows )
+      for r in range(n_chgs):
+        activerows[r] = r
+      for r in range(n_chgs,n_rows):
+        activerows[r] = r + gap
+      
+      # Tidy up
+      del n_spls, n_rows, gap, r
+      
+      # Adjust a spell or charge, based on what row of the matrix it's represented on
+      def adj( n:int, row:int ) -> None:
+        if row < n_chgs: # Charges
+          char.set_charge(
+            row,
+            n + char.stats['charges'][row]['curr'],
+            show=True
+          )
+        else: # Spells
+          char.set_spell(
+            16 - row,
+            n + char.stats['spells'][16-row][0],
+            show=True
+          )
+      
+      rmm.append(
+        menu.NewMatxMenu(
+          rm,hal,
+          prio=HAL_PRIORITY_MENU+1,
+          active_rows=activerows,
+          inc=lambda r: adj( 1, r ),
+          dec=lambda r: adj( -1, r ),
+          buffer=self.hal.mtx.bitmap,
+          send_buffer=self.hal.mtx.update
+        )
+      )
+      
+      '''
       rmm.append(
         menu.ChargeMenu(
           rm,hal,char,
+          prio=HAL_PRIORITY_MENU+1,
           startrow=0,
           indices = [ x for x in range( len(char.stats['charges']) ) ]
         )
@@ -334,6 +395,7 @@ class Gadget:
       rmm.append(
         menu.SpellMenu(
           rm,hal,char,
+          prio=HAL_PRIORITY_MENU+1,
           startrow=16-len( char.stats['spells'] ),
           indices = [ x for x in range( len( char.stats['spells'] )-1, -1, -1 ) ]
         )
@@ -347,11 +409,11 @@ class Gadget:
         next_menu=None,
         prev_menu=rmm[0]
       )
-      
+      '''
       # OLED MENU #
       
       rmm.append(
-        menu.OledMenu(rm,hal,char)
+        menu.OledMenu(rm,hal,prio=HAL_PRIORITY_MENU+1,)
       )
       rmm[2].init( # OLED
         next_menu=rmm[2],
@@ -361,7 +423,9 @@ class Gadget:
       omi = rmm[2].items
       
       omi.append(
-        menu.DoubleAdjuster( rmm[2], self.hal, 'Damage',
+        menu.DoubleAdjuster( rmm[2], self.hal,
+          prio=HAL_PRIORITY_MENU+2,
+          title='Damage',
           preview=lambda d: char.damage_calc(-d),
           get_cur=lambda: ( char.stats['hp'][0], char.stats['hp'][2] ),
           set_new=lambda d: char.damage(-d),
@@ -377,7 +441,9 @@ class Gadget:
         )
       )
       omi.append(
-        menu.SimpleAdjuster( rmm[2], self.hal, 'Heal',
+        menu.SimpleAdjuster( rmm[2], self.hal,
+          prio=HAL_PRIORITY_MENU+2,
+          title='Heal',
           get_cur=lambda: char.stats['hp'][0],
           set_rel=char.heal,
           adj_rel = lambda d : char.show_hp( char.stats['hp'][0] + char.stats['hp'][2] + d ),
@@ -388,49 +454,65 @@ class Gadget:
         )
       )
       omi.append(
-        menu.SimpleAdjuster( rmm[2], self.hal, 'TEMP HP',
+        menu.SimpleAdjuster( rmm[2], self.hal,
+          prio=HAL_PRIORITY_MENU+2,
+          title='TEMP HP',
           get_cur=lambda: 0, # Always starts at zero because we're always replacing
           set_abs=char.set_temp_hp
         )
       )
       omi.append(
-        menu.SimpleAdjuster( rmm[2], self.hal, 'GOLD',
+        menu.SimpleAdjuster( rmm[2], self.hal,
+          prio=HAL_PRIORITY_MENU+2,
+          title='GOLD',
           get_cur=lambda: char.stats['gold'],
           set_abs=char.set_gold
         )
       )
       omi.append(
-        menu.SimpleAdjuster( rmm[2], self.hal, 'SILVER',
+        menu.SimpleAdjuster( rmm[2], self.hal,
+          prio=HAL_PRIORITY_MENU+2,
+          title='SILVER',
           get_cur=lambda: char.stats['silver'],
           set_abs=char.set_silver
         )
       )
       omi.append(
-        menu.SimpleAdjuster( rmm[2], self.hal, 'COPPER',
+        menu.SimpleAdjuster( rmm[2], self.hal,
+          prio=HAL_PRIORITY_MENU+2,
+          title='COPPER',
           get_cur=lambda: char.stats['copper'],
           set_abs=char.set_copper
         )
       )
       omi.append(
-        menu.SimpleAdjuster( rmm[2], self.hal, 'ELECTRUM',
+        menu.SimpleAdjuster( rmm[2], self.hal,
+          prio=HAL_PRIORITY_MENU+2,
+          title='ELECTRUM',
           get_cur=lambda: char.stats['electrum'],
           set_abs=char.set_electrum
         )
       )
       omi.append(
-        menu.SimpleAdjuster( rmm[2], self.hal, 'XP',
+        menu.SimpleAdjuster( rmm[2], self.hal,
+          prio=HAL_PRIORITY_MENU+2,
+          title='XP',
           get_cur=lambda: char.stats['xp'],
           set_abs=char.set_xp
         )
       )
       omi.append(
-        menu.FunctionConfirmer( rmm[2], self.hal, 'LONG REST',
+        menu.FunctionConfirmer( rmm[2], self.hal,
+          prio=HAL_PRIORITY_MENU+2,
+          title='LONG REST',
           confirmation='Take long rest',
           con_func=char.long_rest
         )
       )
       omi.append(
-        menu.SimpleAdjuster( rmm[2], self.hal, 'SHORT REST',
+        menu.SimpleAdjuster( rmm[2], self.hal,
+          prio=HAL_PRIORITY_MENU+2,
+          title='SHORT REST',
           #       x x x x x x x x
           prompt='Use hit dice?',
           get_cur=lambda: char.stats['hd'][0],
@@ -441,7 +523,9 @@ class Gadget:
         )
       )
       omi.append(
-        menu.SimpleAdjuster( rmm[2], self.hal, 'Brightness',
+        menu.SimpleAdjuster( rmm[2], self.hal,
+          prio=HAL_PRIORITY_MENU+2,
+          title='Brightness',
           # Get and set using the HAL function
           # Preview using the driver function, bypassing HAL's memory
           get_cur=self.hal.mtx.brightness,
@@ -453,7 +537,9 @@ class Gadget:
         )
       )
       omi.append(
-        menu.FunctionConfirmer( rmm[2], self.hal, 'POWER OFF',
+        menu.FunctionConfirmer( rmm[2], self.hal,
+          prio=HAL_PRIORITY_MENU+2,
+          title='POWER OFF',
           confirmation='Shut down',
           con_func=self.power_off
         )
@@ -467,7 +553,7 @@ class Gadget:
         btn = rmm[2].next_item
       )
       #self.hw.init( cw=rm.cw, ccw=rm.ccw, btn=rm.btn, sw=rm.back )
-      cr = self.hal.register( priority=HAL_PRIORITY_MENU, features=('input',), input_target=rm.input_target )
+      #cr = self.hal.register( priority=HAL_PRIORITY_MENU, features=('input',), input_target=rm.input_target )
       
       # Assign
       self.menu = rm
@@ -479,8 +565,11 @@ class Gadget:
       # Wait for a reset
       await self.phase_reset.wait()
       
-      # If we've been reset, give up our HAL registration
-      self.hal.unregister(cr)
+      # Tidy up
+      del self.menu # RootMenu's __del__() method handles the HAL deregistration
+      hal.unregister( mtx_idle )
+      gc.collect()
+      
   
   async def _phase_controller(self):
     print('Phase controller active')
@@ -513,7 +602,12 @@ class Gadget:
     ))
     
     # Oled idle stuff
-    oledcr = self.hal.register( priority=HAL_PRIORITY_IDLE, features=('oled',), callback=self._oled_idle_render )
+    oledcr = self.hal.register(
+      priority=HAL_PRIORITY_IDLE,
+      features=('oled',),
+      callback=self._oled_idle_render,
+      name='OledIdle'
+    )
     oled_idle = asyncio.create_task( self._oled_runner(oledcr) )
     
     # Set up the SD manager and wait for the card to be ready
@@ -659,7 +753,11 @@ class Gadget:
     et = asyncio.create_task( self.hal.eink.refresh() )
     
     # Wait message
-    cr = self.hal.register( priority=HAL_PRIORITY_SHUTDOWN, features=('oled',) )
+    cr = self.hal.register(
+      priority=HAL_PRIORITY_SHUTDOWN,
+      features=('oled',),
+      name='Shutdown'
+    )
     oled = self.hal.oled
     oled.fill(0)
     oled.text( 'Please wait...', 0,0, 1 )

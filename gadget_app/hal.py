@@ -2,7 +2,7 @@
 # Some original code in einktest.py
 #
 # T. Lloyd
-# 15 Sep 2025
+# 17 Sep 2025
 
 from micropython import const
 import asyncio
@@ -10,6 +10,8 @@ import asyncio
 
 # Hardware drivers
 from gadget_hw import HW
+
+_DEBUG_VERBOSE_REGISTRATIONS = const(True)
 
 # Colour for border of e-eink panel
 _EINK_BORDER_COLOUR = const(0)
@@ -25,14 +27,17 @@ class HAL:
     
     # Refs to hardware features
     self.mtx = Matrix( self.hw.mtx )
-    self.input = Input()
     self.needle = Needle( self.hw )
     self.eink = self.hw.eink
     self.oled = self.hw.oled
     self.sd = self.hw.sd
     
-    # Set up the input link
-    self.hw.init( cb=self.input.receiver )
+    # Input target, gets updated by _update_clients()
+    self._it = lambda x:None
+    
+    # Get the hardware input stream - this lambda will be called by schedule()
+    # i is an int indicating which input this was
+    self.hw.init( cb=lambda i:self._it(i) )
     
     # Priority lock levels for each lockable feature
     self._features = {
@@ -41,6 +46,9 @@ class HAL:
       'input' : 0,
       'needle' : 0,
     }
+    
+    # Software components using register()
+    self._clients:set[_ClientRegistration] = set()
     
     # Pass these through
     self.batt_pc = self.hw.batt_pc
@@ -54,26 +62,44 @@ class HAL:
     self._update_eink = asyncio.ThreadSafeFlag()
     self._eink_action = 0
     self._eink_task = asyncio.create_task( self._eink_updater() )
-    
-    # Software components using register()
-    self._clients = set()
   
   # Register code that will use hardware features.
   # priority: int, higher number is higher priority
   # features: list of hardware features this code needs
   # callback: will be called when all features become available
   # input_target: function to receive input codes
+  # name: An identifying string for this registration
   # register( priority, features, callback=None, input_target=None )
-  def register(self, *args, **kwargs ):
-    cr = _ClientRegistration( *args, **kwargs )
-    #print('Registered',cr)
+  def register(self, priority, features, **kwargs ):
+    
+    cr = _ClientRegistration( priority, features, **kwargs )
+    
+    # Check nothing illegal is going on
+    for c in self._clients:
+      if c.priority == priority:
+        clash = False
+        for f in features:
+          if f in c.features:
+            clash = True
+        if clash:
+          print('WARNING!  Priority clash detected! Adding anyway...')
+          print('  Existing:',c)
+          print('       New:',cr)
+          raise RuntimeError('Duplicate priorities attempted')
+    
+    # Add it in
     self._clients.add( cr )
+    
+    if _DEBUG_VERBOSE_REGISTRATIONS:
+      print('Registered',cr)
+    
     self._update_clients()
     return cr
   
   def unregister(self, cr ):
     self._clients.discard( cr )
-    #print('Unregistered',cr)
+    if _DEBUG_VERBOSE_REGISTRATIONS:
+      print('Unregistered',cr)
     self._update_clients()
   
   def _update_clients(self):
@@ -105,26 +131,40 @@ class HAL:
       
       # If this client doesn't have priority
       if not ready:
+        
+        # If the client is being deactivated
+        if c.ready and _DEBUG_VERBOSE_REGISTRATIONS:
+          print('Deactivating CR:',c)
+        
+        # Mark it as unready and move on to the next
         c.ready = False
         continue
+      
+      # Update the feature priority list
+      for f in c.features:
+        feat[f] = p
       
       # If the client is only now becoming ready
       if not c.ready:
         
-        # Update the feature priority list
-        for f in c.features:
-          feat[f] = p
+        if _DEBUG_VERBOSE_REGISTRATIONS:
+          print('Activating CR:',c)
         
         # Set the input target, if necessary
         if 'input' in c.features:
-          self.input.target = c.input_target if callable( c.input_target ) else lambda x: None
+          self._it = c.input_target if callable( c.input_target ) else lambda x: None
         
         # Tell the client it's good to go
         c.ready = True
         if callable( c.callback ):
           c.callback()
-        
-    #print('New priorities:',feat )
+    
+    # If everything has abandoned input, reset the input director to null
+    if feat['input'] == 0:
+      self._it = lambda x: None
+    
+    if _DEBUG_VERBOSE_REGISTRATIONS:
+      print('New priorities:',feat )
   
   # Queries low-level state of SD card.
   # Possible return values:
@@ -191,17 +231,18 @@ class HAL:
 
 # The object that hal.register() gives you
 class _ClientRegistration:
-  def __init__(self, priority, features, callback=None, input_target=None ):
+  def __init__(self, priority:int, features:tuple[str], callback=None, input_target=None, name:str='(anon)' ):
     self.priority = priority
     self.features = features
     self.callback = callback
     self.input_target = input_target
+    self.name=name
     self.ready = False
     #self.ready_event = asyncio.Event() # Needs to be called from non-async code, use TSF instead
     #self.unready_event = asyncio.Event()
   
   def __str__(self):
-    return f'CR( priority={self.priority}, features={str(self.features)}  )'
+    return f'{self.name} ( priority={self.priority}, features={str(self.features)}  )'
 
 class Matrix:
   def __init__(self, mtx ):
@@ -235,11 +276,11 @@ class Matrix:
     
     return self._bright
 
-class Input:
-  def __init__(self):
-    self.target = lambda x: None
-  def receiver(self,i): # This gets called directly by the ISR
-    self.target(i)
+#class Input:
+#  def __init__(self):
+#    self.target = lambda x: None
+#  def receiver(self,i): # This gets called directly by the ISR
+#    self.target(i)
 
 class Needle:
   def __init__(self,hw):

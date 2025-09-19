@@ -2,12 +2,12 @@
 # For OLED and LED Matrix displays
 #
 # T. Lloyd
-# 15 Sep 2025
+# 19 Sep 2025
 
 from gc import collect as gc_collect
-import time
+#import time
 
-from .common import DeferredTask, HAL_PRIORITY_MENU
+from .common import DeferredTask
 
 # Drives the needle to select from a number of equally-spaced positions across its arc
 # hal: the HAL object
@@ -49,20 +49,8 @@ class NeedleMenu:
     self.i -= 1
     self._update()
   
-  
   def input_target(self, i ):
     self._ih[i]()
-  #def cw(self,x):
-  #  self.next()
-  ##
-  #def ccw(self,x):
-  #  self.prev()
-  ##
-  #def btn(self,x):
-  #  self.f_btn( self.i )
-  ##
-  #def back(self,x):
-  #  self.f_back( self.i )
 
 
 ''' Menu prototype:
@@ -87,85 +75,55 @@ display_type - String, 'oled' or 'mtx' indicating which hardware this menu write
 '''
 
 class RootMenu:
-  def __init__(self,hal,char,*args,**kwargs):
-    #self.hal = hal
-    self.char = char
+  def __init__(self,hal,prio,*args,**kwargs):
+    self.hal = hal
     self.menus = []
-    self.child = None
     
-    # Low-level input handler
-    self._ih = (
-      self.back,
-      self.btn,
-      self.cw,
-      self.ccw
+    self.cr = self.hal.register(
+      priority=prio,
+      features=('input',),
+      input_target=lambda i:self._ih[i](),
+      name=type(self).__name__
     )
     
     self.init(*args,**kwargs)
   
+  def __del__(self):
+    self.destroy()
+  
   def init(self,cw=lambda:None,ccw=lambda:None,btn=lambda:None,back=lambda:None):
-    # Default input actions
-    self.f_cw = cw
-    self.f_ccw = ccw
-    self.f_btn = btn
-    self.f_back = back
+    # Low-level input handler
+    self._ih = (
+      back,
+      btn,
+      cw,
+      ccw,
+    )
   
-  # Reclaim focus (usually from an exiting child)
-  def reclaim(self):
-    self.child = None
-    self.char.draw_mtx( show=True )
-    gc_collect()
-  
+  # Terminator stub for 'exit to root' cascading call
   def exit(self):
-    self.reclaim()
+    pass
   
-  # Pass user inputs on to appropriate menu
-  def cw(self):
-    if self.child is None:
-      self.f_cw()
-    else:
-      self.child.cw()
-  #
-  def ccw(self):
-    if self.child is None:
-      self.f_ccw()
-    else:
-      self.child.ccw()
-  #
-  def btn(self):
-    if self.child is None:
-      self.f_btn()
-    else:
-      self.child.btn()
-  #
-  def back(self):
-    if self.child is None:
-      self.f_back()
-    else:
-      self.child.back()
-  #
-  def input_target(self, i ):
-    self._ih[i]()
-  
+  # When the root menu actually needs to go away
+  def destroy(self):
+    self.hal.unregister( self.cr )
 
 
 class OledMenu:
   
-  def __init__(self,parent,hal,char,next_menu=None,prev_menu=None):
+  def __init__(self,parent,hal,prio,next_menu=None,prev_menu=None):
     self.parent = parent
     self.hal = hal
-    self.char = char
-    self.display_type = 'oled'
+    self.prio = prio
     self.items = []
     self.s = None
-    self.child = None
     
     # Low-level input handler
     self._ih = (
-      self.back,
-      self.btn,
-      self.cw,
-      self.ccw
+      self._leave, # back
+      lambda: self.items[ self.s ].enter(), # btn
+      self.next_item, # cw
+      self.prev_item, # ccw
     )
     
     self.init( next_menu, prev_menu )
@@ -177,112 +135,85 @@ class OledMenu:
   def _register(self):
     self.parent.child = self
     self._cs = self.hal.register(
-      priority=HAL_PRIORITY_MENU,
+      priority=self.prio,
       features=('input','oled',),
-      input_target=self.input_target,
-      callback=lambda: self.items[ self.s ].render_title(),
+      input_target=lambda i: self._ih[i](),
+      callback=self._render,
+      name=type(self).__name__
     )
   
   def _unregister(self):
     self.hal.unregister( self._cs )
   
+  # Show whichever item title we're currently on
+  def _render(self):
+    if self.s is not None:
+      self.items[ self.s ].render_title()
+  
   def next_item(self):
     
-    # Deal with the item pointer
+    # If we are being activated (from the start)
     if self.s == None:
       self.s = 0
+      self._register()
+    
+    # If we are already active
     else:
       self.s += 1
+      
+      # If we are being deactivated
       if self.s >= len(self.items):
         self.s = None
-        if self.next_menu is None:
-          self.parent.reclaim()
-        else:
-          if self.next_menu.display_type != self.display_type:
-            #self.hal.oled.release()
-            self._unregister()
+        self._unregister()
+        
+        if self.next_menu is not None:
           self.next_menu.next_item()
+        
         return
     
-    # Register
-    self._register()
-    #self.hal.oled.lock = True
+    # Display the new title
+    self._render()
   
   def prev_item(self):
     
-    # Deal with the item pointer
+    # If we are being activated (from the end)
     if self.s == None:
       self.s = len(self.items)-1
+      self._register()
+    
+    # If we are already active
     else:
       self.s -= 1
+      
+      # If we are being deactivated
       if self.s < 0:
         self.s = None
-        if self.prev_menu is None:
-          self.parent.reclaim()
-        else:
-          if self.next_menu.display_type != self.display_type:
-            #self.hal.oled.release()
-            self._unregister()
+        self._unregister()
+        
+        if self.prev_menu is not None:
           self.prev_menu.prev_item()
+        
         return
     
     # Register
-    self._register()
-    #self.hal.oled.lock = True
+    self._render()
   
   def exit(self):
-    self.s = None
-    self.child = None
-    #self.hal.oled.release()
-    self._unregister()
+    self._leave()
     self.parent.exit()
   
-  def reclaim(self):
-    self.child = None
-    self.items[ self.s ].render_title()
-    gc_collect()
-  
-  def cw(self):
-    if self.child is not None:
-      self.child.cw()
-    else:
-      self.next_item()
-  
-  def ccw(self):
-    if self.child is not None:
-      self.child.ccw()
-    else:
-      self.prev_item()
-  
-  def back(self):
-    if self.child is not None:
-      self.child.back()
-    else:
-      self.s = None
-      #self.hal.oled.release()
-      self._unregister()
-      self.parent.reclaim()
-  
-  def btn(self):
-    
-    # Pass through if needed
-    if self.child is not None:
-      self.child.btn()
-      return
-    
-    c = self.items[ self.s ]
-    self.child = c
-    c.enter()
-    
-  def input_target(self, i ):
-    self._ih[i]()
+  def _leave(self):
+    self.s = None
+    self._unregister()
+
 
 # For adjusting numeric values
-# screen is ~15 characters wide
+# screen is 128/8 = 16 characters wide
 class SimpleAdjuster:
   def __init__(self,
     parent,      # The menu that this adjuster is attached to
     hal,         # HAL object (for control of hardware)
+    prio,        # The hal cr priority
     title,       # What to display on the menu
     get_cur,     # Function returning current value of adjustment parameter
     prompt=None, # Text to display while adjusting.  Default to same as title.
@@ -298,7 +229,13 @@ class SimpleAdjuster:
   ):
     self.parent = parent
     self.hal = hal
-    #self.hw = hal.hw
+    self.prio = prio
+    self._ih = (
+      self._leave, # back
+      self.btn,
+      self.cw,
+      self.ccw
+    )
     self.title = title
     self.prompt = f'{title}:' if prompt is None else prompt
     self.get = get_cur
@@ -321,6 +258,18 @@ class SimpleAdjuster:
     if set_abs is None and set_rel is None:
       raise RuntimeError('At least one of set_abs or set_rel must be callable')
   
+  def _register(self):
+    self._cr = self.hal.register(
+      priority=self.prio,
+      features=('input','oled',),
+      input_target=lambda i:self._ih[i](),
+      callback=self._update,
+      name=self.title,
+    )
+  
+  def _unregister(self):
+    self.hal.unregister( self._cr )
+  
   def _update(self):
     oled = self.hal.oled
     cur = self.get()
@@ -341,9 +290,10 @@ class SimpleAdjuster:
     oled.show()
   
   def enter(self):
-    self._update()
+    self._register()
   
   def exit(self):
+    self._leave()
     self.parent.exit()
   
   def render_title(self):
@@ -391,17 +341,24 @@ class SimpleAdjuster:
     self.d = 0
     self.exit()
   
-  def back(self):
+  def _leave(self):
     self.d = 0
     self.aadj(self.get())
     self.radj(0)
-    self.parent.reclaim()
+    self._unregister()
 
 # One adjustment affects two values
 class DoubleAdjuster( SimpleAdjuster ):
-  def __init__(self,parent,hal,title,preview,get_cur,set_new,a='A',b='B',adj_rel=None,min_d=0,max_d=None,min_a=None,min_b=None,max_a=None,max_b=None):
+  def __init__(self,parent,hal,prio,title,preview,get_cur,set_new,a='A',b='B',adj_rel=None,min_d=0,max_d=None,min_a=None,min_b=None,max_a=None,max_b=None):
     self.parent = parent
     self.hal = hal
+    self.prio = prio
+    self._ih = (
+      self._leave, # back
+      self.btn,
+      self.cw,
+      self.ccw
+    )
     self.title = title
     self.preview = preview
     self.get = get_cur
@@ -521,16 +478,37 @@ class DoubleAdjuster( SimpleAdjuster ):
 
 # For confirming single actions
 class FunctionConfirmer:
-  def __init__(self,parent,hal,title,confirmation,con_func):
+  def __init__(self,parent,hal,prio,title,confirmation,con_func):
     self.parent = parent
     self.hal = hal
-    #self.hw = hal.hw
+    self.prio = prio
+    self._ih = (
+      self._leave, # back
+      self.btn,
+      lambda:None, # cw
+      lambda:None # ccw
+    )
     self.title = title
     self.c_text = confirmation
     self.c_func = con_func
   
+  def _register(self):
+    self._cr = self.hal.register(
+      priority=self.prio,
+      features=('input','oled',),
+      input_target=lambda i:self._ih[i](),
+      callback=self._update,
+      name=self.title,
+    )
+  
+  def _unregister(self):
+    self.hal.unregister( self._cr )
+  
   # Displays the UI
   def enter(self):
+    self._register()
+  
+  def _update(self):
     oled = self.hal.oled
     
     oled.fill(0)
@@ -549,6 +527,7 @@ class FunctionConfirmer:
     oled.show()
   
   def exit(self):
+    self._leave()
     self.parent.exit()
   
   def render_title(self):
@@ -557,90 +536,210 @@ class FunctionConfirmer:
     oled.text( self.title, 12,12,1)
     oled.show()
   
-  def cw(self):
-    pass
-  
-  def ccw(self):
-    pass
-  
   def btn(self):
     self.c_func()
     self.exit()
   
-  def back(self):
-    self.parent.reclaim()
+  def _leave(self):
+    self._unregister()
 
 
-# Common code for both menus on the matrix
-class MatrixMenu:
+class NewMatxMenu:
   
-  def __init__(self,parent,hal,char,startrow,indices,next_menu=None,prev_menu=None,timeout=2500):
+  def __init__(self,
+    parent,hal,
+    prio:int,
+    active_rows:bytearray,
+    inc,
+    dec,
+    buffer:bytearray,
+    send_buffer,
+    timeout=2500,
+  ):
     self.parent = parent
     self.hal = hal
-    #self.hw = hal.hw
-    self.char = char
-    self.display_type = 'mtx'
-    self.first_row = startrow
-    self.last_row = startrow + len(indices) -1
-    self.indices = indices
+    self.prio = prio
+    self.active_rows = active_rows
+    self.inc = inc
+    self.dec = dec
+    self.buffer = buffer
+    self.send_buffer = send_buffer
+    
+    #if active_rows == 0:
+    #  raise ValueError('Must have at least one active row')
+    
     self.r = None
     self.to = DeferredTask( timeout=timeout, callback=self.exit )
-    self.init( next_menu, prev_menu )
+    self._ih = (
+      lambda: self.inc( self.active_rows[self.r] ), # back
+      lambda: self.dec( self.active_rows[self.r] ), # btn
+      self.prev_item, # cw
+      self.next_item # ccw
+    )
   
-  def init(self,next_menu=None,prev_menu=None):
-    self.next_menu = next_menu
-    self.prev_menu = prev_menu
+  def _register(self):
+    self._cr = self.hal.register(
+      priority=self.prio,
+      features=('input','mtx'),
+      input_target=lambda i:self._ih[i](),
+      name=type(self).__name__
+    )
+  
+  def _unregister(self):
+    self.hal.unregister(self._cr)
+    self._cr = None
   
   def next_item(self):
     
-    # Deal with the row pointer
+    # If we are being activated (from the top)
     if self.r is None:
-      self.r = self.first_row
+      self.r = 0
+      self._register()
+    
+    # If we are already active
     else:
       self.r += 1
-      if self.r > self.last_row:
+      
+      # If we are being deactivated
+      if self.r >= len(self.active_rows):
         self.r = None
         self.to.untouch()
-        if self.next_menu is None:
-          self.parent.reclaim()
-        else:
-          if self.next_menu.display_type != self.display_type:
-            self.char.draw_mtx()
-          self.next_menu.next_item()
+        self._unregister()
         return
     
     # Update the timeout
     self.to.touch()
-    
-    # Register
-    self.parent.child = self
     
     # Update the matrix
     self._update_mtx()
   
   def prev_item(self):
     
-    # Deal with the row pointer
+    # If we are being activated (from the bottom)
     if self.r is None:
-      self.r = self.last_row
+      self.r = len(self.active_rows) - 1
+      self._register()
+    
+    # If we are already active
     else:
       self.r -= 1
-      if self.r < self.first_row:
+      
+      # If we are being deactivated
+      if self.r < 0:
         self.r = None
         self.to.untouch()
-        if self.prev_menu is None:
-          self.parent.reclaim()
-        else:
-          if self.prev_menu.display_type != self.display_type:
-            self.char.draw_mtx()
-          self.prev_menu.prev_item()
+        self._unregister()
         return
     
     # Update the timeout
     self.to.touch()
     
-    # Register
-    self.parent.child = self
+    # Update the matrix
+    self._update_mtx()
+  
+  # Redraws the matrix with the seector pip
+  def _update_mtx(self):
+    self.buffer[ self.active_rows[ self.r ] ] |= 3
+    self.send_buffer()
+  
+  def exit(self):
+    self.r = None
+    self.to.untouch()
+    self.hal.unregister(self._cr)
+    self.parent.exit()
+    
+
+
+# Common code for both menus on the matrix
+class MatrixMenu:
+  
+  def __init__(self,parent,hal,char,prio,startrow,indices,next_menu=None,prev_menu=None,timeout=2500):
+    self.parent = parent
+    self.hal = hal
+    self.char = char
+    self.prio = prio
+    #self.display_type = 'mtx'
+    self.first_row = startrow
+    self.last_row = startrow + len(indices) -1
+    self.indices = indices
+    self.r = None
+    self.to = DeferredTask( timeout=timeout, callback=self.exit )
+    self._ih = (
+      self.back,
+      self.btn,
+      self.prev_item, # cw
+      self.next_item # ccw
+    )
+    self.init( next_menu, prev_menu )
+  
+  def init(self,next_menu=None,prev_menu=None):
+    self.next_menu = next_menu
+    self.prev_menu = prev_menu
+  
+  def _register(self):
+    self._cr = self.hal.register(
+      priority=self.prio,
+      features=('input','mtx'),
+      input_target=lambda i:self._ih[i](),
+      name=type(self).__name__
+    )
+  
+  def _unregister(self):
+    self.hal.unregister(self._cr)
+    self._cr = None
+  
+  def next_item(self):
+    
+    # If we are being activated (from the top)
+    if self.r is None:
+      self.r = self.first_row
+      self._register()
+    
+    # If we are already active
+    else:
+      self.r += 1
+      
+      # If we are being deactivated
+      if self.r > self.last_row:
+        self.r = None
+        self.to.untouch()
+        self._unregister()
+        
+        if self.next_menu is not None:
+          self.next_menu.next_item()
+        
+        return
+    
+    # Update the timeout
+    self.to.touch()
+    
+    # Update the matrix
+    self._update_mtx()
+  
+  def prev_item(self):
+    
+    # If we are being activated (from the bottom)
+    if self.r is None:
+      self.r = self.last_row
+      self._register()
+    
+    # If we are already active
+    else:
+      self.r -= 1
+      
+      # If we are being deactivated
+      if self.r < self.first_row:
+        self.r = None
+        self.to.untouch()
+        self._unregister()
+        
+        if self.prev_menu is not None:
+          self.prev_menu.prev_item()
+        
+        return
+    
+    # Update the timeout
+    self.to.touch()
     
     # Update the matrix
     self._update_mtx()
@@ -655,13 +754,9 @@ class MatrixMenu:
   def exit(self):
     self.r = None
     self.to.untouch()
+    self.hal.unregister(self._cr)
     self.parent.exit()
   
-  def ccw(self):
-    self.next_item()
-    
-  def cw(self):
-    self.prev_item()
   
 
 # OK/back button for charges menu

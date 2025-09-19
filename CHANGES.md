@@ -23,6 +23,7 @@ Way to skip character select screen and just go to last played
 Oled menu to blank out default stuff before drawing
 spell slots can reset on short rest for some classes?
 Have a "things" class, remove the items/spells distinction?
+- Combine both matrix menus into one menu with one CR - save redraws when transitioning
 get rid of asserts, everywhere - replace with valueerror or something, at least
 Proper error handling
 Rotary still misses steps, particularly if it's spun quickly - needs checking with scope

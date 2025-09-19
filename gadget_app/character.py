@@ -1,18 +1,18 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 11 Sep 2025
+# 19 Sep 2025
 
-import asyncio
+#import asyncio
 import os
 from micropython import const
 from gc import collect as gc_collect
 #import gc
 
 from . import gfx
-from .common import *
+from .common import DeferredTask, CHAR_STATS
 
-SAVE_TIMEOUT = const(3) # Save contdown, in seconds
+_SAVE_TIMEOUT = const(5000) # Save contdown, in ms
 
 # Check a string: correct type and has length
 def val_str(s,t):
@@ -161,7 +161,7 @@ class Character:
     
     #self.dirty = False
     #self._save_task = asyncio.create_task( self._save_watcher() )
-    self._saver = DeferredTask( timeout=5000, callback=self._save_now )
+    self._saver = DeferredTask( timeout=_SAVE_TIMEOUT, callback=self._save_now )
     self.is_saving = self._saver.is_dirty
     
     e = self.load()
@@ -655,24 +655,34 @@ class Character:
     self.save()
   
   # Set a spell level to a given number of slots
-  # Does NOT validate
+  # DOES validate, now           # Does NOT validate
   # Updates the matrix fb.  Optionally also sends the fb.
-  def set_spell( self, s, val, show=True ):
+  def set_spell( self, spl, val, show=True ):
+    
+    s = self.stats['spells'][spl]
+    
+    if 0 <= val <= s[1]:
+      s[0] = val
     
     # Record the new value
-    self.stats['spells'][s][0] = val
+    #self.stats['spells'][s][0] = val
     
     self.save()
     
     self.draw_mtx(show=show)
   
   # Set a charge item to a given number of charges
-  # Does NOT validate
+  # DOES validate, now        # Does NOT validate
   # Updates the matrix fb.  Optionally also sends the fb.
   def set_charge( self, chg, val, show=True ):
     
+    c = self.stats['charges'][chg]
+    
+    if 0 <= val <= c['max']:
+      c['curr'] = val
+    
     # Record the new value
-    self.stats['charges'][chg]['curr'] = val
+    #self.stats['charges'][chg]['curr'] = val
     
     self.save()
     
