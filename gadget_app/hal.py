@@ -2,7 +2,7 @@
 # Some original code in einktest.py
 #
 # T. Lloyd
-# 17 Sep 2025
+# 20 Sep 2025
 
 from micropython import const
 import asyncio
@@ -11,7 +11,7 @@ import asyncio
 # Hardware drivers
 from gadget_hw import HW
 
-_DEBUG_VERBOSE_REGISTRATIONS = const(True)
+_DEBUG_VERBOSE_REGISTRATIONS = const(False)
 
 # Colour for border of e-eink panel
 _EINK_BORDER_COLOUR = const(0)
@@ -82,7 +82,7 @@ class HAL:
           if f in c.features:
             clash = True
         if clash:
-          print('WARNING!  Priority clash detected! Adding anyway...')
+          print('WARNING!  Priority clash detected!')
           print('  Existing:',c)
           print('       New:',cr)
           raise RuntimeError('Duplicate priorities attempted')

@@ -2,7 +2,7 @@
 # For Micropython v1.26
 #
 # T. Lloyd
-# 19 Sep 2025
+# 20 Sep 2025
 
 
 # TO USE:
@@ -16,10 +16,9 @@
 
 # Builtin libraries
 import asyncio
-#from array import array
 import gc
-from micropython import const
 import vfs
+from micropython import const
 
 # Other libraries
 from . import pathlib
@@ -41,11 +40,14 @@ MANDATORY_CHAR_FILES = [ # Files that must exist in a character directory for it
 # In ms.  How often to redraw the OLED idle screen
 _OLED_IDLE_REFRESH = const(500)
 
+# Matrix adjust timeout, in ms
+_MTX_TIMEOUT = const(3000)
+
 # Store this figure for future use
 _MEM_TOTAL = gc.mem_alloc() + gc.mem_free()
 
 # Used for memory history graph on idle screen
-memlog = bytearray(33)
+memlog = bytearray(33) # 32-long ring buffer, plus pointer
 
 class Gadget:
   
@@ -278,23 +280,14 @@ class Gadget:
         # Let everything else know
         done.set()
       
-      # Set up the character select UI
-      csm = menu.NeedleMenu(
+      # Set up the character chooser needle
+      nm = menu.NeedleMenu(
         hal = self.hal,
+        prio = HAL_PRIORITY_MENU,
         n = len(chars),
         btn = set_char,
         back = lambda x: self.hal.needle.wobble() # self.power_off() # self.hal.hw.empty_battery.set()
       )
-      
-      # NeedleMenu isn't CR aware, and doesn't need to be, provided its actions are driven only by direct user inputs
-      cr = self.hal.register(
-        priority=HAL_PRIORITY_MENU,
-        features=('needle','input',),
-        input_target=csm.input_target,
-        name='NeedleMenu'
-      )
-      
-      #self.hw.init( cw=csm.cw, ccw=csm.ccw, btn=csm.btn, sw=csm.back )
       
       # Wait until the character is chosen
       await done.wait()
@@ -302,8 +295,8 @@ class Gadget:
       # Make sure this is ready in case of next loop
       done.clear()
       
-      # NeedleMenu doesn't know when to do this, so do it here
-      self.hal.unregister(cr)
+      # Destroy the NeedleMenu (this unregisters its CR)
+      nm.destroy()
       
       # Assign the character
       self.character = cobj[0]
@@ -312,7 +305,7 @@ class Gadget:
       self.phase_play.set()
       
       # Tidy up
-      del cobj, cr, chars, set_char, csm
+      del cobj, chars, nm, set_char
       gc.collect()
       
       # Wait for any reset
@@ -326,7 +319,6 @@ class Gadget:
       
       # Localisation
       rm = menu.RootMenu( self.hal, HAL_PRIORITY_MENU )
-      rmm = rm.menus
       char = self.character
       
       # Create default/idle HAL registration
@@ -340,17 +332,17 @@ class Gadget:
       # MATRIX MENU #
       
       # Calculate matrix geometry
-      n_spls = len(char.stats['spells'])
-      n_chgs = min( 16-n_spls, len(char.stats['charges']) )
-      n_rows = n_chgs + n_spls
+      n_spls = len(char.stats['spells']) # Allow as many spells as we have
+      n_chgs = min( 16-n_spls, len(char.stats['charges']) ) # Cut off charges if there are too many to fit
+      n_rows = n_chgs + n_spls # Number of active rows
       gap = 16 - n_rows
       
-      # Construct the active rows array
+      # Construct the active rows array for MatrixMenu
       activerows = bytearray( n_rows )
-      for r in range(n_chgs):
+      for r in range(n_chgs): # Matrix is indexed from top down - so do the charges first
         activerows[r] = r
-      for r in range(n_chgs,n_rows):
-        activerows[r] = r + gap
+      for r in range(n_chgs,n_rows): # These are the spells
+        activerows[r] = r + gap # Actual row the spells are on may be offset if there's a gap between them and the charges
       
       # Tidy up
       del n_spls, n_rows, gap, r
@@ -365,65 +357,39 @@ class Gadget:
           )
         else: # Spells
           char.set_spell(
-            16 - row,
-            n + char.stats['spells'][16-row][0],
+            15 - row,
+            n + char.stats['spells'][15-row][0],
             show=True
           )
       
-      rmm.append(
-        menu.NewMatxMenu(
-          rm,hal,
+      mm = menu.MatrixMenu(
+          hal,
           prio=HAL_PRIORITY_MENU+1,
           active_rows=activerows,
           inc=lambda r: adj( 1, r ),
           dec=lambda r: adj( -1, r ),
           buffer=self.hal.mtx.bitmap,
-          send_buffer=self.hal.mtx.update
+          redraw_buffer=lambda: char.draw_mtx( show=False ),
+          send_buffer=self.hal.mtx.update,
+          timeout=_MTX_TIMEOUT,
         )
-      )
+      rm.menus.append(mm)
       
-      '''
-      rmm.append(
-        menu.ChargeMenu(
-          rm,hal,char,
-          prio=HAL_PRIORITY_MENU+1,
-          startrow=0,
-          indices = [ x for x in range( len(char.stats['charges']) ) ]
-        )
-      )
       
-      rmm.append(
-        menu.SpellMenu(
-          rm,hal,char,
-          prio=HAL_PRIORITY_MENU+1,
-          startrow=16-len( char.stats['spells'] ),
-          indices = [ x for x in range( len( char.stats['spells'] )-1, -1, -1 ) ]
-        )
-      )
-      
-      rmm[0].init( # Charges
-        next_menu=rmm[1],
-        prev_menu=None
-      )
-      rmm[1].init( # Spells
-        next_menu=None,
-        prev_menu=rmm[0]
-      )
-      '''
       # OLED MENU #
       
-      rmm.append(
-        menu.OledMenu(rm,hal,prio=HAL_PRIORITY_MENU+1,)
+      om = menu.OledMenu(
+        parent=rm,
+        hal=hal,
+        prio=HAL_PRIORITY_MENU+1,
+        wrap=True
       )
-      rmm[2].init( # OLED
-        next_menu=rmm[2],
-        prev_menu=rmm[2]
-      )
+      rm.menus.append(om)
       
-      omi = rmm[2].items
+      omi = om.items
       
       omi.append(
-        menu.DoubleAdjuster( rmm[2], self.hal,
+        menu.DoubleAdjuster( om, self.hal,
           prio=HAL_PRIORITY_MENU+2,
           title='Damage',
           preview=lambda d: char.damage_calc(-d),
@@ -441,7 +407,7 @@ class Gadget:
         )
       )
       omi.append(
-        menu.SimpleAdjuster( rmm[2], self.hal,
+        menu.SimpleAdjuster( om, self.hal,
           prio=HAL_PRIORITY_MENU+2,
           title='Heal',
           get_cur=lambda: char.stats['hp'][0],
@@ -454,7 +420,7 @@ class Gadget:
         )
       )
       omi.append(
-        menu.SimpleAdjuster( rmm[2], self.hal,
+        menu.SimpleAdjuster( om, self.hal,
           prio=HAL_PRIORITY_MENU+2,
           title='TEMP HP',
           get_cur=lambda: 0, # Always starts at zero because we're always replacing
@@ -462,7 +428,7 @@ class Gadget:
         )
       )
       omi.append(
-        menu.SimpleAdjuster( rmm[2], self.hal,
+        menu.SimpleAdjuster( om, self.hal,
           prio=HAL_PRIORITY_MENU+2,
           title='GOLD',
           get_cur=lambda: char.stats['gold'],
@@ -470,7 +436,7 @@ class Gadget:
         )
       )
       omi.append(
-        menu.SimpleAdjuster( rmm[2], self.hal,
+        menu.SimpleAdjuster( om, self.hal,
           prio=HAL_PRIORITY_MENU+2,
           title='SILVER',
           get_cur=lambda: char.stats['silver'],
@@ -478,7 +444,7 @@ class Gadget:
         )
       )
       omi.append(
-        menu.SimpleAdjuster( rmm[2], self.hal,
+        menu.SimpleAdjuster( om, self.hal,
           prio=HAL_PRIORITY_MENU+2,
           title='COPPER',
           get_cur=lambda: char.stats['copper'],
@@ -486,7 +452,7 @@ class Gadget:
         )
       )
       omi.append(
-        menu.SimpleAdjuster( rmm[2], self.hal,
+        menu.SimpleAdjuster( om, self.hal,
           prio=HAL_PRIORITY_MENU+2,
           title='ELECTRUM',
           get_cur=lambda: char.stats['electrum'],
@@ -494,7 +460,7 @@ class Gadget:
         )
       )
       omi.append(
-        menu.SimpleAdjuster( rmm[2], self.hal,
+        menu.SimpleAdjuster( om, self.hal,
           prio=HAL_PRIORITY_MENU+2,
           title='XP',
           get_cur=lambda: char.stats['xp'],
@@ -502,7 +468,7 @@ class Gadget:
         )
       )
       omi.append(
-        menu.FunctionConfirmer( rmm[2], self.hal,
+        menu.FunctionConfirmer( om, self.hal,
           prio=HAL_PRIORITY_MENU+2,
           title='LONG REST',
           confirmation='Take long rest',
@@ -510,7 +476,7 @@ class Gadget:
         )
       )
       omi.append(
-        menu.SimpleAdjuster( rmm[2], self.hal,
+        menu.SimpleAdjuster( om, self.hal,
           prio=HAL_PRIORITY_MENU+2,
           title='SHORT REST',
           #       x x x x x x x x
@@ -523,7 +489,7 @@ class Gadget:
         )
       )
       omi.append(
-        menu.SimpleAdjuster( rmm[2], self.hal,
+        menu.SimpleAdjuster( om, self.hal,
           prio=HAL_PRIORITY_MENU+2,
           title='Brightness',
           # Get and set using the HAL function
@@ -537,7 +503,7 @@ class Gadget:
         )
       )
       omi.append(
-        menu.FunctionConfirmer( rmm[2], self.hal,
+        menu.FunctionConfirmer( om, self.hal,
           prio=HAL_PRIORITY_MENU+2,
           title='POWER OFF',
           confirmation='Shut down',
@@ -545,28 +511,27 @@ class Gadget:
         )
       )
       
+      
       # ROOT MENU #
       
       rm.init(
-        cw  = rmm[1].prev_item,
-        ccw = rmm[0].next_item,
-        btn = rmm[2].next_item
+        cw  = mm.prev_item,
+        ccw = mm.next_item,
+        btn = om.next_item
       )
-      #self.hw.init( cw=rm.cw, ccw=rm.ccw, btn=rm.btn, sw=rm.back )
-      #cr = self.hal.register( priority=HAL_PRIORITY_MENU, features=('input',), input_target=rm.input_target )
       
       # Assign
       self.menu = rm
       
       # Tidy up
-      del rm, rmm, omi # , char
+      del rm, mm, om, omi # , char
       gc.collect()
       
       # Wait for a reset
       await self.phase_reset.wait()
       
       # Tidy up
-      del self.menu # RootMenu's __del__() method handles the HAL deregistration
+      del self.menu # RootMenu's __del__() method handles the HAL deregistration... maybe
       hal.unregister( mtx_idle )
       gc.collect()
       

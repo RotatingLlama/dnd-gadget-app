@@ -1,7 +1,7 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 19 Sep 2025
+# 20 Sep 2025
 
 #import asyncio
 import os
@@ -655,37 +655,35 @@ class Character:
     self.save()
   
   # Set a spell level to a given number of slots
-  # DOES validate, now           # Does NOT validate
+  # DOES validate
   # Updates the matrix fb.  Optionally also sends the fb.
   def set_spell( self, spl, val, show=True ):
     
+    # Get the spell object
     s = self.stats['spells'][spl]
     
-    if 0 <= val <= s[1]:
-      s[0] = val
+    # Is the new number valid?
+    if not 0 <= val <= s[1]:
+      return
     
-    # Record the new value
-    #self.stats['spells'][s][0] = val
-    
+    s[0] = val
     self.save()
-    
     self.draw_mtx(show=show)
   
   # Set a charge item to a given number of charges
-  # DOES validate, now        # Does NOT validate
+  # DOES validate
   # Updates the matrix fb.  Optionally also sends the fb.
   def set_charge( self, chg, val, show=True ):
     
+    # Get the charge object
     c = self.stats['charges'][chg]
     
-    if 0 <= val <= c['max']:
-      c['curr'] = val
+    # Is the new number valid?
+    if not 0 <= val <= c['max']:
+      return
     
-    # Record the new value
-    #self.stats['charges'][chg]['curr'] = val
-    
+    c['curr'] = val
     self.save()
-    
     self.draw_mtx(show=show)
   
   # Helper functions for these numeric-only things

@@ -3,16 +3,16 @@ TODO
 
 GENERAL
 -------
-* BUG: Enter oled menu.  Back out of oled menu.  Can't enter matrix menu now, only oled!
-  - Caused by partial implementation of hal register in menu.py.  Needs Fully implementing.
 * Proper SD card handling
   - On unplug:
-    - In char select: prevent any selection.  Don't assume the same characters are still on the card after reinsertion.
-    - In play screen: allow normal play, but defer saves until replug.  Create savefile on replug no matter what else is on the card now.
-  - On replug:
-    - Reverse the above contingencies
+    - In char select: prevent any selection.  Reload characters on replug.
+    - In play screen:
+      - Allow normal play, but defer saves until replug.
+      - Create emergency savefile in root of new card, if any were pending
+      - Return to char select screen
   - Make render_sd_error() in gfx.py use blit_onto instead of load()
   - Hide 'sd error' that appears on startup, before card is ready
+  - Catch OSErrors from sdcard.py?
 * Since MP 1.26 floats can be constants.  Roll out const() use where applicable.
 * Long/Short rests and other rests:
   - Allow short rest stuff to get reset on long rest, too
@@ -23,10 +23,8 @@ Way to skip character select screen and just go to last played
 Oled menu to blank out default stuff before drawing
 spell slots can reset on short rest for some classes?
 Have a "things" class, remove the items/spells distinction?
-- Combine both matrix menus into one menu with one CR - save redraws when transitioning
 get rid of asserts, everywhere - replace with valueerror or something, at least
 Proper error handling
-Rotary still misses steps, particularly if it's spun quickly - needs checking with scope
 
 img
 ---
@@ -67,6 +65,7 @@ Gameplay Changes & Bugfixes
 Visible Changes
 ---------------
 * Moved all character data to external SD card
+* Significantly improved rotary dial responsiveness (hw.py switched to hard interrupts)
 * Improved Play Screen layout and added background image support (background.2ink)
 * Added brightness control for matrix
 * Added battery monitor
@@ -80,7 +79,7 @@ Invisible Changes
   - UI() is now HAL()
   - Classes now have a ref to hal instead of to ui
 * hal.py:
-  - Added more granular way of locking hardware features with hal.register() and unregister()
+  - Added more granular way of locking hardware features using ClientRegistrations (CRs) with hal.register() and unregister()
   - Added hal.needle object and wobble() method
 * Reworked main_sequence() as phase control, like wm project
 * hw.py
@@ -90,6 +89,8 @@ Invisible Changes
   - Added short timeout before save, to allow multiple changes to aggregrate together
   - Removed show_all_hp()
 * menu.py
+  - Menus now rely on new CR feature from hal.py, replacing previous parent/child system
+  - Combined both matrix menus into one unified menu
   - Added 'prompt' option to SimpleAdjuster, so prompt can be different from name in menu
   - Added absolute adjuster callback to SimpleAdjuster, to complement existing relative one
 * common.py
