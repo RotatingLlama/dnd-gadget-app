@@ -249,8 +249,6 @@ class Matrix:
     self.matrix = mtx # self.matrix = ui.hw.mtx = max7219.Matrix8x8
     self.bitmap = mtx.buffer
     self.power = mtx.power
-    #self._renderers = set()
-    
     self.brightness(1)
   
   def update(self):
@@ -275,12 +273,10 @@ class Matrix:
     self.matrix.brightness(b)
     
     return self._bright
+  
+  def clear(self):
+    self.matrix.fill(0)
 
-#class Input:
-#  def __init__(self):
-#    self.target = lambda x: None
-#  def receiver(self,i): # This gets called directly by the ISR
-#    self.target(i)
 
 class Needle:
   def __init__(self,hw):

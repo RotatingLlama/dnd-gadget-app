@@ -30,7 +30,7 @@ from .hal import HAL
 from .character import Character
 from . import gfx
 
-_DEBUG_ENABLE_EINK = const(False)
+_DEBUG_ENABLE_EINK = const(True)
 
 # Character file info
 MANDATORY_CHAR_FILES = [ # Files that must exist in a character directory for it to be recognised
@@ -69,6 +69,8 @@ class Gadget:
     #
     self._shutdown = asyncio.Event()
     self._exit_loop = asyncio.Event()
+    #
+    self.play_wait_ani = asyncio.Event()
   
   # Looks at the directory and returns a list of objects:
   # {
@@ -269,6 +271,9 @@ class Gadget:
         # Ignore character choice if the SD card has gone away
         if not self._sd_mounted.is_set():
           return
+        
+        # Turn off the wait screen
+        self.play_wait_ani.clear()
         
         # Set it up
         cobj[0] = Character( self.hal, chars[ charid ]['dir'] )
@@ -560,11 +565,15 @@ class Gadget:
   async def main_sequence(self):
     
     # Battery protection
-    bp = asyncio.create_task(asyncio.gather(
+    earlytasks = asyncio.create_task(asyncio.gather(
       self._shutdown_batt(),
       #self._battery_charge_waiter(),
       self._battery_low_waiter(),
+      self.wait_ani(),
     ))
+    
+    # Loading screen
+    self.play_wait_ani.set()
     
     # Oled idle stuff
     oledcr = self.hal.register(
@@ -780,6 +789,61 @@ class Gadget:
     
     self._exit_loop.set()
   
+  async def wait_ani(self):
+    buf = self.hal.mtx.bitmap
+    send = self.hal.mtx.matrix.show
+    wait = asyncio.sleep_ms
+    #top = bytes([ 0x3e, 0x7c, 0xc1, 0x83 ])
+    #btm = bytes([ 0x9f, 0x3f, 0x40, 0x80 ])
+    top = bytes([ 0x83, 0xc1, 0x7c, 0x3e ])
+    btm = bytes([ 0x80, 0x40, 0x3f, 0x9f ])
+    while True:
+      f = 0
+      while f < 4: # 4 frames
+        await wait(80)
+        await self.play_wait_ani.wait()
+        i=0
+        while i < 4: # 4 lines per frame
+          t = top[ (f+i)%4 ]
+          b = btm[ (f+i)%4 ]
+          buf[i] = t
+          buf[i+4] = t
+          buf[i+8] = b
+          buf[i+12] = b
+          i += 1
+        send()
+        f += 1
+          
+  # Full bitmap animation on the matrix
+  async def ani(self):
+    buf = self.hal.mtx.bitmap
+    send = self.hal.mtx.matrix.show
+    wait = asyncio.sleep_ms
+    a = bytes([
+      128,  64,  32,  16,   8,   4,   2,   1,    128,  64,  32,  16,   8,   4,   2,   1,
+       64,  32,  16,   8,   4,   2,   1, 128,     64,  32,  16,   8,   4,   2,   1, 128,
+       32,  16,   8,   4,   2,   1, 128,  64,     32,  16,   8,   4,   2,   1, 128,  64,
+       16,   8,   4,   2,   1, 128,  64,  32,     16,   8,   4,   2,   1, 128,  64,  32,
+        8,   4,   2,   1, 128,  64,  32,  16,      8,   4,   2,   1, 128,  64,  32,  16,
+        4,   2,   1, 128,  64,  32,  16,   8,      4,   2,   1, 128,  64,  32,  16,   8,
+        2,   1, 128,  64,  32,  16,   8,   4,      2,   1, 128,  64,  32,  16,   8,   4,
+        1, 128,  64,  32,  16,   8,   4,   2,      1, 128,  64,  32,  16,   8,   4,   2,
+    ])
+    
+    f:int = len(a)
+    j:int
+    k:int
+    while True:
+      j = 0
+      while j < f:
+        k = 0
+        while k < 16:
+          buf[k] = a[ j+k ]
+          k += 1
+        send()
+        await wait(40)
+        j += 16
+    
   async def start_app(self):
     """ Start the app as a coroutine. This coroutine does
         not normally return, as the server enters an endless listening loop.

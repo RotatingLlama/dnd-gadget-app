@@ -1,7 +1,7 @@
 # Drawing functions
 #
 # T. Lloyd
-# 14 Sep 2025
+# 20 Sep 2025
 
 # Standard libraries
 import micropython
@@ -53,7 +53,8 @@ _ARC2_THICKNESS = const(3)
 _ARC2_RI = const(171) # round(RI + _ARC_THICKNESS * 1.4)
 
 # Geometry for titles
-_TIT_MIDPOINT_Y = const( 240 - (_CHAR_HEAD_SIZE//2) )
+_HEAD_MIDPOINT_Y = const( 240 - (_CHAR_HEAD_SIZE//2) )
+_TIT_MIDPOINT_Y = const( 216 )
 #TIT_Y = const(20)
 #T1_C = const(1)
 #T2_dY = const(14)
@@ -496,13 +497,13 @@ def draw_play_screen( fb, char, lowbatt=False ):
   ### CHARACTER HEAD ###
   if lowbatt:
     chs2 = _CHAR_HEAD_SIZE//2
-    img.blit_onto( fb, X-chs2, _TIT_MIDPOINT_Y-chs2, _IMG_LOWBATT )
+    img.blit_onto( fb, X-chs2, _HEAD_MIDPOINT_Y-chs2, _IMG_LOWBATT )
   else:
     if head.is_file():
       chs2 = _CHAR_HEAD_SIZE//2
-      img.blit_onto( fb, X-chs2, _TIT_MIDPOINT_Y-chs2, str( head ) )
+      img.blit_onto( fb, X-chs2, _HEAD_MIDPOINT_Y-chs2, str( head ) )
     else:
-      fb.rect( X-1, _TIT_MIDPOINT_Y-1, 3, 3, 2, True ) # dot
+      fb.rect( X-1, _HEAD_MIDPOINT_Y-1, 3, 3, 2, True ) # dot
       chs2 = 2
   
   ######## TITLES ########

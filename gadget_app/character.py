@@ -726,9 +726,9 @@ class Character:
     # Given a line and a number, will light up that many lights from the right
     # LSB is at left of display
     def draw_spell_charge( line, curr, max ):
-      
-      # Draw the line of lights
-      fb[ line ] = 256 - ( 1 << (8-curr) )
+      fb[ line ] = 256 - ( 1 << (8-curr) ) # Draw the line of lights
+    
+    self.hal.mtx.clear()
     
     # Go through all charges to update the matrix fb
     for i,c in enumerate(stats['charges']):
