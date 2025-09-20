@@ -18,7 +18,6 @@ GENERAL
   - Allow short rest stuff to get reset on long rest, too
   - Allow things with charges that never automatically reset
   - How to handle things that reset at 'dawn', or that don't regain all charges on reset (eg. Armour of Magical Strength)
-* Move titles on play screen down slightly (too close to bottom of arc)
 Way to skip character select screen and just go to last played
 Oled menu to blank out default stuff before drawing
 spell slots can reset on short rest for some classes?
@@ -71,6 +70,7 @@ Visible Changes
 * Added battery monitor
  - Needle now wobbles when battery is low and not charging.
  - New low-battery graphic will display in place of character head.
+* Added natty loading animation
 
 Invisible Changes
 -----------------
