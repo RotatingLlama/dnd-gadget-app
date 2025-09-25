@@ -38,6 +38,8 @@ character.py
 On save, update individual lines rather than rewriting entire file.  To preserve formatting and comments
 Way of communicating error in load()
 implement die()
+Move to JSON format?
+Truncate charge item quantity at load-in, not at led matrix geometry calculation: max charges = 16 - n_spells
 
 menu.py
 -------
@@ -70,7 +72,10 @@ Visible Changes
 * Added battery monitor
  - Needle now wobbles when battery is low and not charging.
  - New low-battery graphic will display in place of character head.
-* Added natty loading animation
+* Added natty loading and poweroff animations
+* At poweroff:
+  - Eink progress is now indicated by moving needle.
+  - Oled powers off properly, instead of remaining on after program halt.
 
 Invisible Changes
 -----------------

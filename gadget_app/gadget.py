@@ -2,7 +2,7 @@
 # For Micropython v1.26
 #
 # T. Lloyd
-# 20 Sep 2025
+# 25 Sep 2025
 
 
 # TO USE:
@@ -19,6 +19,7 @@ import asyncio
 import gc
 import vfs
 from micropython import const
+import time
 
 # Other libraries
 from . import pathlib
@@ -42,6 +43,9 @@ _OLED_IDLE_REFRESH = const(500)
 
 # Matrix adjust timeout, in ms
 _MTX_TIMEOUT = const(3000)
+
+# How long we expect the eink to take to blank out
+_EINK_BLANK_MS = const(15700)
 
 # Store this figure for future use
 _MEM_TOTAL = gc.mem_alloc() + gc.mem_free()
@@ -597,7 +601,7 @@ class Gadget:
     ))
     
     # Now wait until we want to stop
-    print('Main loop done, waiting...')
+    print('Startup complete.')
     await self._exit_loop.wait()
     print('Exiting.  Adios!')
   
@@ -713,6 +717,19 @@ class Gadget:
       # Wait for the battery to stop charging before looking again at its level
       await self.hal.batt_discharge.wait()
   
+  # Moves the needle while clearing the e-ink
+  async def _clear_eink_needle(self):
+    start = time.ticks_ms()
+    self.hal.eink_clear_refresh()
+    pos = self.hal.needle.position
+    not_busy = self.hal.eink.unbusy.is_set
+    t = 0
+    while t < 3000 or not not_busy(): # While eink is busy (flag may flicker between send and refresh)
+      t = time.ticks_diff( time.ticks_ms(), start ) # Time elapsed
+      pos( min( 1, t / _EINK_BLANK_MS ) ) # Set the needle
+      await asyncio.sleep_ms(30)
+    pos(0) # Needle to zero
+    
   # Waits for _shutdown event and tidies everything up
   # Sets the _exit_loop event
   async def _shutdown_clean(self):
@@ -723,8 +740,9 @@ class Gadget:
     print('Shutting down...')
     
     # Blank eink
-    await self.hal.eink.clear()
-    et = asyncio.create_task( self.hal.eink.refresh() )
+    #t1 = time.ticks_ms()
+    et = asyncio.create_task( self._clear_eink_needle() )
+    m = asyncio.create_task( self.ani( ani_squares, 100 ) )
     
     # Wait message
     cr = self.hal.register(
@@ -737,26 +755,19 @@ class Gadget:
     oled.text( 'Please wait...', 0,0, 1 )
     oled.show()
     
-    # Blank matrix
-    # also send empty buffer first
-    self.hal.mtx.power(0)
-    
     # Unmount SD
-    #sd = self.hw.sd1
-    #sd.umount()
+    if self._sd_is_mounted():
+      vfs.umount( SD_ROOT )
     
     # Wait for the eink to actually finish
     await et
+    #print( time.ticks_diff( time.ticks_ms(), t1 ))
     
-    # Set needle to zero
-    self.hal.needle.position(0)
+    # Turn out the lights
+    self.hal.oled.poweroff()
+    self.hal.mtx.power(0)
     
-    # Display final message
-    oled = self.hal.oled
-    oled.fill(0)
-    oled.text( 'OK to turn off', 8,12, 1 )
-    oled.show()
-    
+    # Stop
     self._exit_loop.set()
   
   # Waits for the hw.py empty_battery event
@@ -781,12 +792,13 @@ class Gadget:
     self.hal.needle.position(0)
     
     # Unmount SD
-    #sd = self.hw.sd1
-    #sd.umount()
+    if self._sd_is_mounted():
+      vfs.umount( SD_ROOT )
     
     # Wait for the eink to actually finish
     await et
     
+    # Stop
     self._exit_loop.set()
   
   async def wait_ani(self):
@@ -815,34 +827,25 @@ class Gadget:
         f += 1
           
   # Full bitmap animation on the matrix
-  async def ani(self):
+  # a = bytes of length 16.f, where f is the number of frames
+  # p = int ms to wait in between frames
+  async def ani(self, a:bytes, p:int=40):
     buf = self.hal.mtx.bitmap
     send = self.hal.mtx.matrix.show
     wait = asyncio.sleep_ms
-    a = bytes([
-      128,  64,  32,  16,   8,   4,   2,   1,    128,  64,  32,  16,   8,   4,   2,   1,
-       64,  32,  16,   8,   4,   2,   1, 128,     64,  32,  16,   8,   4,   2,   1, 128,
-       32,  16,   8,   4,   2,   1, 128,  64,     32,  16,   8,   4,   2,   1, 128,  64,
-       16,   8,   4,   2,   1, 128,  64,  32,     16,   8,   4,   2,   1, 128,  64,  32,
-        8,   4,   2,   1, 128,  64,  32,  16,      8,   4,   2,   1, 128,  64,  32,  16,
-        4,   2,   1, 128,  64,  32,  16,   8,      4,   2,   1, 128,  64,  32,  16,   8,
-        2,   1, 128,  64,  32,  16,   8,   4,      2,   1, 128,  64,  32,  16,   8,   4,
-        1, 128,  64,  32,  16,   8,   4,   2,      1, 128,  64,  32,  16,   8,   4,   2,
-    ])
-    
     f:int = len(a)
+    i:int
     j:int
-    k:int
     while True:
-      j = 0
-      while j < f:
-        k = 0
-        while k < 16:
-          buf[k] = a[ j+k ]
-          k += 1
+      i = 0
+      while i < f:
+        j = 0
+        while j < 16:
+          buf[j] = a[ i+j ]
+          j += 1
         send()
-        await wait(40)
-        j += 16
+        await wait(p)
+        i += 16
     
   async def start_app(self):
     """ Start the app as a coroutine. This coroutine does
@@ -879,3 +882,21 @@ class Gadget:
             app.run()
         """
     asyncio.run( self.start_app() )
+
+# Matrix animation data
+ani_squares = bytes([
+  0xff, 0x81, 0x81, 0x99, 0x99, 0x81, 0x81, 0xff, 0xff, 0x81, 0x81, 0x99, 0x99, 0x81, 0x81, 0xff,
+  0xff, 0xff, 0xc3, 0xc3, 0xc3, 0xc3, 0xff, 0xff, 0x00, 0x00, 0x3c, 0x3c, 0x3c, 0x3c, 0x00, 0x00,
+  0x00, 0x7e, 0x7e, 0x66, 0x66, 0x7e, 0x7e, 0x00, 0x00, 0x7e, 0x7e, 0x66, 0x66, 0x7e, 0x7e, 0x00,
+  0x00, 0x00, 0x3c, 0x3c, 0x3c, 0x3c, 0x00, 0x00, 0xff, 0xff, 0xc3, 0xc3, 0xc3, 0xc3, 0xff, 0xff,
+])
+ani_diag = bytes([
+  128,  64,  32,  16,   8,   4,   2,   1,    128,  64,  32,  16,   8,   4,   2,   1,
+   64,  32,  16,   8,   4,   2,   1, 128,     64,  32,  16,   8,   4,   2,   1, 128,
+   32,  16,   8,   4,   2,   1, 128,  64,     32,  16,   8,   4,   2,   1, 128,  64,
+   16,   8,   4,   2,   1, 128,  64,  32,     16,   8,   4,   2,   1, 128,  64,  32,
+    8,   4,   2,   1, 128,  64,  32,  16,      8,   4,   2,   1, 128,  64,  32,  16,
+    4,   2,   1, 128,  64,  32,  16,   8,      4,   2,   1, 128,  64,  32,  16,   8,
+    2,   1, 128,  64,  32,  16,   8,   4,      2,   1, 128,  64,  32,  16,   8,   4,
+    1, 128,  64,  32,  16,   8,   4,   2,      1, 128,  64,  32,  16,   8,   4,   2,
+])

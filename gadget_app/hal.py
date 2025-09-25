@@ -2,7 +2,7 @@
 # Some original code in einktest.py
 #
 # T. Lloyd
-# 20 Sep 2025
+# 25 Sep 2025
 
 from micropython import const
 import asyncio
@@ -277,19 +277,24 @@ class Matrix:
   def clear(self):
     self.matrix.fill(0)
 
-
+# Method position():
+#  No args: Returns position (float 0.0 - 1.0)
+#  pos:float: Sets postion.  Takes float 0.0-1.0
+# Method wobble():
+#  No args: Toggle wobble
+#  wob:bool: Set wobble on/off
 class Needle:
   def __init__(self,hw):
     self.hw = hw
     self._wob = False
   
-  def position(self, pos=None ):
+  def position(self, pos:float=None ):
     if pos is None:
       return self.hw.get_needle_position()
     else:
       self.hw.set_needle_position(pos)
   
-  def wobble(self, wob=None ):
+  def wobble(self, wob:bool|None=None ):
     
     # No arg means toggle wobble
     if wob is None:
