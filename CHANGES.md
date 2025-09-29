@@ -3,9 +3,9 @@ TODO
 
 GENERAL
 -------
+* Checks on both root menus to not cause problems if destroy() is called twice
 * Proper SD card handling
   - On unplug:
-    - In char select: prevent any selection.  Reload characters on replug.
     - In play screen:
       - Allow normal play, but defer saves until replug.
       - Create emergency savefile in root of new card, if any were pending
@@ -66,6 +66,7 @@ Gameplay Changes & Bugfixes
 Visible Changes
 ---------------
 * Moved all character data to external SD card
+  - Unplugging the SD card resets the system (replug will reload the char select menu)
 * Significantly improved rotary dial responsiveness (hw.py switched to hard interrupts)
 * Improved Play Screen layout and added background image support (background.2ink)
 * Added brightness control for matrix

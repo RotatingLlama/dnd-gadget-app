@@ -2,7 +2,7 @@
 # For Micropython v1.26
 #
 # T. Lloyd
-# 25 Sep 2025
+# 29 Sep 2025
 
 
 # TO USE:
@@ -31,7 +31,7 @@ from .hal import HAL
 from .character import Character
 from . import gfx
 
-_DEBUG_ENABLE_EINK = const(True)
+_DEBUG_DISABLE_EINK = const(False)
 
 # Character file info
 MANDATORY_CHAR_FILES = [ # Files that must exist in a character directory for it to be recognised
@@ -67,7 +67,8 @@ class Gadget:
     
     # Phase triggers
     self.phase_select_char = asyncio.Event()
-    self.phase_play = asyncio.Event()
+    self.phase_play = asyncio.ThreadSafeFlag()
+    self._reset = asyncio.ThreadSafeFlag()
     self.phase_reset = asyncio.Event()
     self.phase_exit = asyncio.Event()
     #
@@ -252,21 +253,15 @@ class Gadget:
   # Sets up the selector, returns the Character object
   async def _select_character(self):
     
-    # This gets set when the Character object is created
-    done = asyncio.ThreadSafeFlag()
-    
     while True:
       await self.phase_select_char.wait()
       
       # Takes a framebuffer and a list of chars to show
       # Returns as many chars as it actually did show
       chars = gfx.draw_char_select( self.hal.eink, self._find_chars() )
-      if _DEBUG_ENABLE_EINK:
+      if not _DEBUG_DISABLE_EINK:
         self.hal.eink_send_refresh()
       #print(chars)
-      
-      # This will hold the Character object
-      cobj:Character = [0]
       
       # Gets called when a character is chosen
       # Gets given an index into the list from _find_chars()
@@ -280,17 +275,24 @@ class Gadget:
         self.play_wait_ani.clear()
         
         # Set it up
-        cobj[0] = Character( self.hal, chars[ charid ]['dir'] )
-        if _DEBUG_ENABLE_EINK:
-          cobj[0].draw_eink()
-        cobj[0].draw_mtx()
-        cobj[0].show_curr_hp()
+        c = Character( self.hal, chars[ charid ]['dir'] )
+        if not _DEBUG_DISABLE_EINK:
+          c.draw_eink()
+        c.draw_mtx()
+        c.show_curr_hp()
         
-        # Let everything else know
-        done.set()
+        # Destroy the char select menu
+        self.menu.destroy()
+        
+        # Set this up
+        self.character = c
+        
+        # Trigger the next phase
+        self.phase_play.set()
+        
       
       # Set up the character chooser needle
-      nm = menu.NeedleMenu(
+      self.menu = menu.NeedleMenu(
         hal = self.hal,
         prio = HAL_PRIORITY_MENU,
         n = len(chars),
@@ -298,24 +300,9 @@ class Gadget:
         back = lambda x: self.hal.needle.wobble() # self.power_off() # self.hal.hw.empty_battery.set()
       )
       
-      # Wait until the character is chosen
-      await done.wait()
-      
-      # Make sure this is ready in case of next loop
-      done.clear()
-      
-      # Destroy the NeedleMenu (this unregisters its CR)
-      nm.destroy()
-      
-      # Assign the character
-      self.character = cobj[0]
-      
-      # Trigger Play phase
-      self.phase_play.set()
-      
       # Tidy up
-      del cobj, chars, nm, set_char
-      gc.collect()
+      #del cobj, chars, nm, set_char
+      #gc.collect()
       
       # Wait for any reset
       await self.phase_reset.wait()
@@ -540,14 +527,34 @@ class Gadget:
       await self.phase_reset.wait()
       
       # Tidy up
-      del self.menu # RootMenu's __del__() method handles the HAL deregistration... maybe
+      #self.menu.destroy()
       hal.unregister( mtx_idle )
       gc.collect()
       
+  def reset(self):
+    self._reset.set()
   
+  async def _reset_waiter(self):
+    while True:
+      
+      await self._reset.wait()
+      
+      # Destroy the UI
+      if self.menu is not None:
+        self.menu.destroy()
+      
+      # Make sure these won't auto-start again
+      self.phase_select_char.clear()
+      self.phase_play.clear()
+      
+      self.phase_reset.set()
+      
   async def _phase_controller(self):
     print('Phase controller active')
     while True:
+      
+      # If the SD isn't ready, wait 'til it is
+      await self._sd_mounted.wait()
       
       # Start the first phase
       self.phase_select_char.set()
@@ -557,6 +564,8 @@ class Gadget:
       
       # Await a reset
       await self.phase_reset.wait()
+      self.phase_reset.clear()
+      
       
       # Stop here if we're shutting down
       if self.phase_exit.is_set():
@@ -590,13 +599,14 @@ class Gadget:
     
     # Set up the SD manager and wait for the card to be ready
     sd = asyncio.create_task( self._wait_mount_sd() )
-    await self._sd_mounted.wait()
+    #await self._sd_mounted.wait() # _hase_controller() now waits for this
     
     # Kick off the main stuff
     phases = asyncio.create_task(asyncio.gather(
       self._select_character(),
       self._play_screen(),
       self._phase_controller(),
+      self._reset_waiter(),
       self._shutdown_clean(),
     ))
     
@@ -629,6 +639,9 @@ class Gadget:
       
       # Clear this flag
       self._sd_mounted.clear()
+      
+      # Trigger this
+      self.reset()
   
   # Attempt to mount the SD.  Does all checks and returns result.
   # 0 = Success
