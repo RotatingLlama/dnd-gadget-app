@@ -2,7 +2,7 @@
 # For Micropython v1.26
 #
 # T. Lloyd
-# 29 Sep 2025
+# 04 Oct 2025
 
 
 # TO USE:
@@ -31,7 +31,7 @@ from .hal import HAL
 from .character import Character
 from . import gfx
 
-_DEBUG_DISABLE_EINK = const(False)
+_DEBUG_DISABLE_EINK = const(True)
 
 # Character file info
 MANDATORY_CHAR_FILES = [ # Files that must exist in a character directory for it to be recognised
@@ -275,7 +275,11 @@ class Gadget:
         self.play_wait_ani.clear()
         
         # Set it up
-        c = Character( self.hal, chars[ charid ]['dir'] )
+        c = Character(
+          hal = self.hal,
+          sd_mounted = self._sd_mounted.is_set,
+          chardir = chars[ charid ]['dir']
+        )
         if not _DEBUG_DISABLE_EINK:
           c.draw_eink()
         c.draw_mtx()
@@ -530,7 +534,8 @@ class Gadget:
       #self.menu.destroy()
       hal.unregister( mtx_idle )
       gc.collect()
-      
+  
+  # Called by _wait_mount_sd() on SD card unplug
   def reset(self):
     self._reset.set()
   
@@ -640,7 +645,7 @@ class Gadget:
       # Clear this flag
       self._sd_mounted.clear()
       
-      # Trigger this
+      # Trigger a phase reset on UNPLUG
       self.reset()
   
   # Attempt to mount the SD.  Does all checks and returns result.

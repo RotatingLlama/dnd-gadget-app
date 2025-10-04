@@ -1,7 +1,7 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 20 Sep 2025
+# 04 Oct 2025
 
 #import asyncio
 import os
@@ -13,6 +13,25 @@ from . import gfx
 from .common import DeferredTask, CHAR_STATS
 
 _SAVE_TIMEOUT = const(5000) # Save contdown, in ms
+
+# Calls os.sync(), but wrapped for compatibility with different Python behaviours
+# https://github.com/micropython/micropython/issues/11449
+# Return true/false to indicate success
+def try_sync() -> bool:
+  
+  ok = True
+  
+  # Convert OSError (CPython behaviour) into bool
+  try:
+    r = os.sync()
+  except OSError:
+    ok = False
+  
+  # Integrate the return value, if we have one
+  if type(r) is bool:
+    ok = ok and r
+  
+  return ok
 
 # Check a string: correct type and has length
 def val_str(s,t):
@@ -131,9 +150,10 @@ PARAMS = {
 }
 
 # hal: The HAL object from hal.py
+# sd_mounted: A callable which will return a boolean indicating whether the SD card is ready for read/write
 # chardir: Path object to the character directory
 class Character:
-  def __init__(self,hal,chardir):
+  def __init__(self, hal, sd_mounted, chardir ):
     
     # Where are my files
     self.dir = chardir
@@ -143,6 +163,9 @@ class Character:
     
     # Top-level ref
     self.hal = hal
+    
+    # Ability to check if we have an SD card
+    self._sd_mounted = sd_mounted
     
     # Stats
     self.stats = {
@@ -159,10 +182,14 @@ class Character:
       'charges' : [],
     }
     
-    #self.dirty = False
-    #self._save_task = asyncio.create_task( self._save_watcher() )
+    # Whenever anything updates self.stats, it also calls self.save()
+    # self.save() calls self._saver.touch() and sets self._dirty
+    # self.is_saving() indicates if we are waiting to do a deferred save
+    # self._dirty indicates whether we have unsaved data
+    
     self._saver = DeferredTask( timeout=_SAVE_TIMEOUT, callback=self._save_now )
     self.is_saving = self._saver.is_dirty
+    self._dirty = False
     
     e = self.load()
     print(self.stats)
@@ -171,13 +198,19 @@ class Character:
     
     gc_collect()
   
-  def _save_now(self):
+  def _save_now(self) -> bool:
+    
+    # If there's no SD, abandon saving attempt
+    # Dirty flag will remain
+    # Need some other trigger (eg. SD card replug) to retry saving
+    if not self._sd_mounted():
+      return False
     
     # Blindly overwrites f with the save data
     # Allocates ~7kB memory every time it runs
     # Appears to scale with lines written, assume they're being buffered before write
     # ...except memory usage is ~7x eventual filesize
-    def do_save( f ):
+    def do_save( f ) -> bool:
       st = self.stats
       #print(f'Writing file {f}')
       #print(type(f))
@@ -220,22 +253,39 @@ class Character:
           w( f'charge_max:{i}={c["max"]}\n' )
           w( f'charge_reset:{i}={c["reset"]}\n#\n' )
         #print(gc.mem_alloc())
+        
+        return True
     
     f = str( self.dir / CHAR_STATS )
     
+    ok  = True
+    
     # Save out the file, temporarily preserving the previous one
-    do_save( f + '.new' )
+    try:
+      ok = ok and do_save( f + '.new' )
+    except OSError:
+      ok = False
     
     # Ensure the new file is saved
-    os.sync()
+    ok = ok and try_sync()
     
     # Replace the old file
-    do_save( f )
-    os.sync()
+    try:
+      ok = ok and do_save( f )
+    except OSError:
+      ok = False
+    ok = ok and try_sync()
+    
+    if not ok:
+      return False
+    
+    self._dirty = False
     print('Saved.')
+    return True
   
   def save(self):
     self._saver.touch()
+    self._dirty = True
   
   def load(self):
     
