@@ -5,22 +5,21 @@ GENERAL
 -------
 * Checks on both root menus to not cause problems if destroy() is called twice
 * Proper SD card handling
-  - On unplug:
-    - In play screen:
-      - Allow normal play, but defer saves until replug.
-      - Create emergency savefile in root of new card, if any were pending
-        - Don't delete character object on reset
-        - Emergency-save dirty save to new SD char folder on replug, then delete character object and reset
-      - Return to char select screen
   - Make render_sd_error() in gfx.py use blit_onto instead of load()
   - Hide 'sd error' that appears on startup, before card is ready
-  - Catch OSErrors from sdcard.py?
 * Since MP 1.26 floats can be constants.  Roll out const() use where applicable.
 * Long/Short rests and other rests:
   - Allow short rest stuff to get reset on long rest, too
   - Allow things with charges that never automatically reset
   - How to handle things that reset at 'dawn', or that don't regain all charges on reset (eg. Armour of Magical Strength)
-* Check that hit dice can be spent outside of a short rest
+* Add a way to spend hit dice outside of a short rest (eg. for Autognonmes with Mending)
+* Rationalise dirname, name, title and subtitle
+Emergency save can save to internal flash if sd unavailable.  Save out to sd when it comes back.
+Have a system.json file
+- Stores 'on-time', and any other non-character-specific data
+  - Used to update RTC for somewhat-meaningful file access times
+- Mandatory file part of directory recognition routine
+- Gets saved at power-down
 Way to skip character select screen and just go to last played
 Oled menu to blank out default stuff before drawing
 Add a menu item to view errors that have been caught and logged

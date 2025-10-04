@@ -1,7 +1,7 @@
 # Drawing functions
 #
 # T. Lloyd
-# 20 Sep 2025
+# 04 Oct 2025
 
 # Standard libraries
 import micropython
@@ -99,10 +99,10 @@ lut_colours = bytes([2,2,2,2,2,2,2])
 # Error phrases for render_sd_error()
 _SD_ERRORS = {
   #   '123456789__123456789',123456789',
-  1 : 'Card not \npresent! ',
+  1 : ' Card not\n present!',
   2 : 'Card     \nunready, \nor faulty',
   3 : 'Could not\nmount SD!',
-  4 : 'No chars \non SD :( ',
+  4 : ' No files\n on SD!  ',
 }
 
 # Takes a buffer (bytearray) to operate on

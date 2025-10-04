@@ -31,7 +31,7 @@ from .hal import HAL
 from .character import Character
 from . import gfx
 
-_DEBUG_DISABLE_EINK = const(True)
+_DEBUG_DISABLE_EINK = const(False)
 
 # Character file info
 MANDATORY_CHAR_FILES = [ # Files that must exist in a character directory for it to be recognised
@@ -62,8 +62,10 @@ class Gadget:
     
     # Things we want to keep track of
     self.file_root = pathlib.Path( SD_ROOT ) / SD_DIR
+    self.menu = None
     self.character = None
     self._sd_mounted = asyncio.Event()
+    self._sd_err = 1 # Start off with 'card not present' until we determine otherwise (gfx.py: _SD_ERRORS)
     
     # Phase triggers
     self.phase_select_char = asyncio.Event()
@@ -144,11 +146,15 @@ class Gadget:
     #
     # If there's an SD problem, override the rest of this screen
     #
+    # Hardware errors get priority
     e = self.hal.get_sd_status()
     if e > 0:
       gfx.render_sd_error( e, oled )
       return
-    
+    # If the card's fine but there's something else wrong
+    if self._sd_err > 0:
+      gfx.render_sd_error( self._sd_err, oled )
+      return
     
     ### BATTERY MONITOR ###
     
@@ -561,6 +567,12 @@ class Gadget:
       # If the SD isn't ready, wait 'til it is
       await self._sd_mounted.wait()
       
+      # Wipe the character object if it already exists
+      # Any emergency save should have happened at _try_mount_sd()
+      # If we're here, that means it succeeded.
+      if self.character is not None:
+        self.character = None
+      
       # Start the first phase
       self.phase_select_char.set()
       
@@ -571,13 +583,9 @@ class Gadget:
       await self.phase_reset.wait()
       self.phase_reset.clear()
       
-      
       # Stop here if we're shutting down
       if self.phase_exit.is_set():
         break
-      
-      # Tidy things up before looping
-      self.character = None
   
   # Start everything, keep refs to looping tasks
   async def main_sequence(self):
@@ -632,7 +640,8 @@ class Gadget:
       # SD card should now be ready
       
       # Try to mount the SD card
-      if self._try_mount_sd() == 0:
+      self._sd_err = self._try_mount_sd()
+      if self._sd_err == 0:
         self._sd_mounted.set()
       
       # Wait for the card to be unplugged
@@ -649,6 +658,7 @@ class Gadget:
       self.reset()
   
   # Attempt to mount the SD.  Does all checks and returns result.
+  # Attempts emergency save, if necessary
   # 0 = Success
   # Ref _SD_ERRORS (in gfx.py) for other codes
   def _try_mount_sd(self) -> int:
@@ -665,6 +675,16 @@ class Gadget:
     # Ensure our root directory exists
     #self.file_root.mkdir(parents=True, exist_ok=True)
     
+    # If have a character object, and it has pending saves, try now to do them
+    ok = True
+    if self.character is not None:
+      if self.character.is_dirty():
+        ok = self.character.emergency_save( SD_ROOT )
+    #
+    # If we failed an emergency save, there's probably something wrong with the card
+    if not ok:
+      return 3 # Could not mount SD
+    
     # Check everything looks ok
     err = self._sd_fs_valid()
     if err > 0:
@@ -680,11 +700,11 @@ class Gadget:
     
     # If it's not mounted then we definitely don't have a valid fs
     if not self._sd_is_mounted():
-      return 2
+      return 3
     
     # Is the characters directory  where we expect it to be?
     if not ( self.file_root / CHAR_SUBDIR ).is_dir():
-      return 3
+      return 4
     
     # Success
     return 0

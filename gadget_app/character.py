@@ -7,12 +7,13 @@
 import os
 from micropython import const
 from gc import collect as gc_collect
+from .pathlib import Path
 #import gc
 
 from . import gfx
 from .common import DeferredTask, CHAR_STATS
 
-_SAVE_TIMEOUT = const(5000) # Save contdown, in ms
+_SAVE_TIMEOUT = const(30000) # Save contdown, in ms
 
 # Calls os.sync(), but wrapped for compatibility with different Python behaviours
 # https://github.com/micropython/micropython/issues/11449
@@ -153,10 +154,10 @@ PARAMS = {
 # sd_mounted: A callable which will return a boolean indicating whether the SD card is ready for read/write
 # chardir: Path object to the character directory
 class Character:
-  def __init__(self, hal, sd_mounted, chardir ):
+  def __init__(self, hal, sd_mounted, chardir:Path ):
     
     # Where are my files
-    self.dir = chardir
+    self.dir:Path = chardir
     print(chardir)
     
     # TODO: Check the dir and its files at this point, raise an error if problems
@@ -198,22 +199,20 @@ class Character:
     
     gc_collect()
   
-  def _save_now(self) -> bool:
+  def is_dirty(self):
+    return self._dirty
+  
+  # Blindly overwrites f with the save data
+  # Return bool indicating success/failure
+  # Allocates ~7kB memory every time it runs
+  # Appears to scale with lines written, assume they're being buffered before write
+  # ...except memory usage is ~7x eventual filesize
+  def _save_file(self, f ) -> bool:
+    st = self.stats
+    #print(f'Writing file {f}')
+    #print(type(f))
     
-    # If there's no SD, abandon saving attempt
-    # Dirty flag will remain
-    # Need some other trigger (eg. SD card replug) to retry saving
-    if not self._sd_mounted():
-      return False
-    
-    # Blindly overwrites f with the save data
-    # Allocates ~7kB memory every time it runs
-    # Appears to scale with lines written, assume they're being buffered before write
-    # ...except memory usage is ~7x eventual filesize
-    def do_save( f ) -> bool:
-      st = self.stats
-      #print(f'Writing file {f}')
-      #print(type(f))
+    try:
       with open( f, 'w') as fd:
         w = fd.write
         
@@ -253,27 +252,34 @@ class Character:
           w( f'charge_max:{i}={c["max"]}\n' )
           w( f'charge_reset:{i}={c["reset"]}\n#\n' )
         #print(gc.mem_alloc())
-        
-        return True
+      
+    except OSError:
+      return False
     
+    return True
+  
+  def _save_now(self) -> bool:
+    
+    # If the directory is missing, abandon saving attempt
+    # Dirty flag will remain
+    # Need some other trigger (eg. SD card replug) to retry saving
+    if not self.dir.is_dir():
+      return False
+    
+    # The file path to save to, as a string
     f = str( self.dir / CHAR_STATS )
     
+    # Success/failure tracker
     ok  = True
     
     # Save out the file, temporarily preserving the previous one
-    try:
-      ok = ok and do_save( f + '.new' )
-    except OSError:
-      ok = False
+    ok = ok and self._save_file( f + '.new' )
     
     # Ensure the new file is saved
     ok = ok and try_sync()
     
     # Replace the old file
-    try:
-      ok = ok and do_save( f )
-    except OSError:
-      ok = False
+    ok = ok and self._save_file( f )
     ok = ok and try_sync()
     
     if not ok:
@@ -281,6 +287,48 @@ class Character:
     
     self._dirty = False
     print('Saved.')
+    return True
+  
+  # Try and save, anywhere, now.
+  def emergency_save(self, dir ) -> bool:
+    
+    # If our old directory exists, try to do a normal save
+    ok = self.dir.is_dir()
+    if ok:
+      ok = self._save_now()
+    
+    # If that worked, we're done
+    if ok:
+      print('Saved to original character directory.')
+      return True
+    
+    # Original chardir name will become the base of the new filename
+    basename = self.dir.name
+    
+    # Emergency save it is.  Sanity check first
+    dir = Path(dir)
+    if not dir.is_dir():
+      print('Emergency save directory does not exist!')
+      print(dir)
+      return False
+    
+    # Find a filename to save to that doesn't already exist
+    i = 0
+    while True:
+      f = dir / f'{basename}-stats-{i:02}.txt'
+      if not f.exists():
+        break
+      i += 1
+    
+    # Attempt to save to the emergency location
+    if not self._save_file( str(f) ):
+      print('Emergency save FAILED to',f)
+      return False
+    if not try_sync():
+      print('Emergency save failed to sync!')
+      return False
+    
+    print('Emergency save successful:',f)
     return True
   
   def save(self):
