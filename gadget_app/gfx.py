@@ -1,7 +1,7 @@
 # Drawing functions
 #
 # T. Lloyd
-# 04 Oct 2025
+# 05 Oct 2025
 
 # Standard libraries
 import micropython
@@ -643,7 +643,7 @@ def draw_char_select( fb, chars ):
     c = _IMG_CHOOSE_W
   
   # Add the banner
-  img.blit_onto( fb, 0,0, c )
+  img.blit_onto( fb, 0,0, c, 3 )
   
   # Truncate list to max length
   chars = chars[:_MAX_CHAR_HEADS]
@@ -685,7 +685,7 @@ def render_sd_error( e:int, oled ):
     oled.fill(0)
     
     # No-SD graphic
-    # TODO: Replace with blit_onto()
+    # TODO: Load into a pre-existing scratch buffer, then blit_onto oled?
     fb = img.load( _IMG_NOSD )
     oled.blit(fb,0,0)
     

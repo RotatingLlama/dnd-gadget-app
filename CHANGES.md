@@ -4,8 +4,6 @@ TODO
 GENERAL
 -------
 * Checks on both root menus to not cause problems if destroy() is called twice
-* Proper SD card handling
-  - Make render_sd_error() in gfx.py use blit_onto instead of load()
 * Since MP 1.26 floats can be constants.  Roll out const() use where applicable.
 * Long/Short rests and other rests:
   - Allow short rest stuff to get reset on long rest, too
@@ -26,6 +24,13 @@ spell slots can reset on short rest for some classes?
 Have a "things" class, remove the items/spells distinction?
 get rid of asserts, everywhere - replace with valueerror or something, at least
 Proper error handling
+Make render_sd_error() in gfx.py use blit_onto instead of load()
+- Handle 2bpp onto 1bpp (to handle b&w with transparency)
+- Define transparency colour in _blit_onto() - needed at least to construct p_bline
+- Read spec for MONO_VLSB [https://docs.micropython.org/en/latest/library/framebuf.html#framebuf.framebuf.MONO_VLSB]
+- Pixel arrangement for oled is *madness*.  Oled gfx assets are small, just img.load() them and use native fb.blit()
+- Maybe instead, just have a 'scratch' framebuffer that's used for all off-screen manipulation, to avoid ad-hoc memory allocation
+
 
 img
 ---
