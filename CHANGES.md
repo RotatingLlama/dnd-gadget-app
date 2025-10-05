@@ -6,7 +6,6 @@ GENERAL
 * Checks on both root menus to not cause problems if destroy() is called twice
 * Proper SD card handling
   - Make render_sd_error() in gfx.py use blit_onto instead of load()
-  - Hide 'sd error' that appears on startup, before card is ready
 * Since MP 1.26 floats can be constants.  Roll out const() use where applicable.
 * Long/Short rests and other rests:
   - Allow short rest stuff to get reset on long rest, too
@@ -46,13 +45,7 @@ Truncate charge item quantity at load-in, not at led matrix geometry calculation
 
 menu.py
 -------
-OLED tells you what you're selecting on the matrix, plus curr/max
-Option to scroll faster when adjusting a large number
-
-gadget.py
----------
-Reduce need for menu objects to know about char, etc.
-
+Option to scroll faster when adjusting a large number - still needed with irq improvement?
 
 
 Gadget v0.3

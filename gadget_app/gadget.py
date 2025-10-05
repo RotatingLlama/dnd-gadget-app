@@ -2,7 +2,7 @@
 # For Micropython v1.26
 #
 # T. Lloyd
-# 04 Oct 2025
+# 05 Oct 2025
 
 
 # TO USE:
@@ -235,9 +235,7 @@ class Gadget:
       # Top left corner
       x = 35
       y = 16
-      if not self.character.is_saving():
-        r(x,y, 12,12, 0, True ) # Blank out the area
-      else:
+      if self.character.is_dirty():
         # Draw a 12x12 floppy disk icon
         v(x,    y+1,   10, 1 ) # Left wall
         h(x+1,  y+11,  10, 1 ) # Bottom
