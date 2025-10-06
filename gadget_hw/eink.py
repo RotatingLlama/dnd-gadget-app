@@ -1,10 +1,11 @@
 # Logic to drive Waveshare e-ink displays
 #
-# 22 Jun 2025
+# 06 Oct 2025
 
 # Standard libraries
 from machine import Pin
 import micropython
+from micropython import const
 import asyncio
 from gc import collect as gc_collect
 from time import sleep_ms
@@ -21,7 +22,7 @@ from img import FrameBuffer, GS2_HMSB
 # sleep()       Power down display
 
 _FB_FMT = GS2_HMSB # fb.GS2_HMSB #fb.framebuf.GS2_HMSB
-_BPP = 2
+_BPP = const(2)
 
 # 
 #class EInk(fb.FB):

@@ -27,15 +27,14 @@ del s, b, DEFS
 # 3 : secret function?
 
 
-# Nothing pressed:
-# Do nothing
-
-# Switch pressed: launch app
-if action == 1:
+# Nothing pressed: launch app
+if action == 0:
   print('> RUNNING APP...')
   from gadget_app import Gadget
   g = Gadget()
   g.run()
+
+# Switch pressed:  Do nothing
 
 # Button pressed: Clear eink only
 if action == 2:

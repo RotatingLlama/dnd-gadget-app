@@ -1,16 +1,16 @@
 # Drawing functions
 #
 # T. Lloyd
-# 05 Oct 2025
+# 06 Oct 2025
 
 # Standard libraries
 import micropython
 from micropython import const
-import array
+from array import array
 from math import sin, cos, tan
 from random import getrandbits, randint
 from gc import collect as gc_collect
-import time
+#import time
 from framebuf import FrameBuffer, MONO_HLSB, GS2_HMSB
 
 # Our libraries
@@ -33,46 +33,59 @@ _PI   = const(3.1415926)
 _TAU  = const(6.2831852)
 _DEG  = const(0.01745329) # pi/180
 
+# EINK SIZE
+_EINK_WIDTH  = const(360)
+_EINK_HEIGHT = const(240)
+
 # Character heads
 _CHAR_HEAD_SIZE = const(64)
 _MAX_CHAR_HEADS = const(6)
 
 # Geometry for HP bar
-X = const(184)
-Y = const(292)
+_X = const(184)
+_Y = const(292)
 #
 _ACENTRE = const( 0 ) # Angle of midpoint of arc (relative to 12 o'clock)
 _ATOTAL  = const( _DEG * 100 ) # Total angle made by arc
 _ASTART  = const( _ACENTRE - (_ATOTAL/2) ) # Angle of start of arc
 _AEND    = const( _ASTART + _ATOTAL ) # Angle of end of arc
 #
-RI = const(157)
+_RI = const(157)
 _ARC_THICKNESS = const(10)
+_RO = const( _RI + _ARC_THICKNESS )
 #
-_ARC2_THICKNESS = const(3)
 _ARC2_RI = const(171) # round(RI + _ARC_THICKNESS * 1.4)
+_ARC2_THICKNESS = const(3)
+_ARC2_RO = const( _ARC2_RI + _ARC2_THICKNESS)
+
+# HP bar ticks geometry
+_TICK_RI      = const( _RI + _ARC_THICKNESS * 1.4 )
+_TICK_LENGTH  = const( _ARC_THICKNESS * 1.1 )
+_TICK_THICK   = const( _ARC_THICKNESS * 0.5 )
+_TICK_ANGLE   = const( _DEG * 3 )
+_TICK_TEXT_PT = const( 8 ) # Pixels past end of tick for text point
 
 # Geometry for titles
-_HEAD_MIDPOINT_Y = const( 240 - (_CHAR_HEAD_SIZE//2) )
-_TIT_MIDPOINT_Y = const( 216 )
+_HEAD_MIDPOINT_Y = const( _EINK_HEIGHT - (_CHAR_HEAD_SIZE//2) )
+_TIT_MIDPOINT_Y  = const( 216 )
 #TIT_Y = const(20)
 #T1_C = const(1)
 #T2_dY = const(14)
 #T2_C = const(2)
 
 # Geometry for charges labels
-_CHG_X = const(3)
-_CHG_Y = const(0)
-_CHG_dY = const(19.7)
-_CHG_C = const(1)
+_CHG_X  = const(3)
+_CHG_Y  = const(0)
+_CHG_DY = const(19.7)
+_CHG_C  = const(1)
 
 # Geometry for spell slot indicator
-_SPL_X = const(0)
-_SPL_W = const(5)
-_SPL_Y = const(239)
-_SPL_dY = const(12)
+_SPL_X  = const(0)
+_SPL_W  = const(5)
+_SPL_Y  = const( _EINK_HEIGHT - 1 )
+_SPL_DY = const(12)
 _SPL_OS = const(-8)
-_SPL_C = const(1)
+_SPL_C  = const(1)
 
 # Rules (LUTs) for chaos_fill()
 # Each is 64 elements long, defining a value for every possible combination of 6 bits
@@ -112,9 +125,9 @@ def chaos_fill( buf:ptr8, lut:ptr8 ):
   
   # bpp=2 is baked in
   
-  width = int(360)
-  height = int(240)
-  byte_width:int = width//4
+  #width = int( _EINK_WIDTH )
+  #height = int( _EINK_HEIGHT )
+  byte_width:int = _EINK_WIDTH // 4
   
   # Random noise across the top row, for complete fill
   i:int = 0
@@ -164,7 +177,7 @@ def chaos_fill( buf:ptr8, lut:ptr8 ):
   
   # For each row in the image
   # Using b to control this loop too doesn't make it any faster, but does make the code less readable
-  while row < height:
+  while row < _EINK_HEIGHT:
     
     # What byte does this row go up to?
     rstop = b + byte_width
@@ -382,28 +395,22 @@ def drawThickArc( fb, x, y, ro, ri, start, end, c=1, scratch=None ):
 # Returns tuple with midpoint of top of tick
 def tick(fb, angle,c=1,direction=0):
   
-  TICK_RI = RI + _ARC_THICKNESS * 1.4
-  TICK_LENGTH = _ARC_THICKNESS * 1.1
-  TICK_THICK  = _ARC_THICKNESS * 0.5
-  TICK_ANGLE = _DEG * 3
-  TICK_TEXT_PT = 8 # Pixels past end of tick for text point
-  
   # Avoid calculating these multiple times
   sin_a = sin(angle)
   cos_a = cos(angle)
   
   # Define baseline
   p0 = (
-    X +(TICK_RI)*sin_a,
-    Y -(TICK_RI)*cos_a
+    _X +(_TICK_RI)*sin_a,
+    _Y -(_TICK_RI)*cos_a
   )
   p1 = (
-    p0[0] +TICK_LENGTH*sin_a,
-    p0[1] -TICK_LENGTH*cos_a,
+    p0[0] +_TICK_LENGTH*sin_a,
+    p0[1] -_TICK_LENGTH*cos_a,
   )
   
   # Text point
-  tltp = TICK_LENGTH + TICK_TEXT_PT
+  tltp = _TICK_LENGTH + _TICK_TEXT_PT
   tp = (
     round( p0[0] +tltp*sin_a ),
     round( p0[1] -tltp*cos_a ),
@@ -414,8 +421,8 @@ def tick(fb, angle,c=1,direction=0):
   if direction == 0:
     # Half the thickness
     t = (
-      0.5 * TICK_THICK * cos_a,
-      0.5 * TICK_THICK * sin_a,
+      0.5 * _TICK_THICK * cos_a,
+      0.5 * _TICK_THICK * sin_a,
     )
     # Offset point 0 half a thickness ccw
     p0 = (
@@ -432,8 +439,8 @@ def tick(fb, angle,c=1,direction=0):
   
   # Thickness offset
   t = (
-    direction*TICK_THICK*cos_a,
-    direction*TICK_THICK*sin_a,
+    direction*_TICK_THICK*cos_a,
+    direction*_TICK_THICK*sin_a,
   )
   
   p2 = (
@@ -442,7 +449,7 @@ def tick(fb, angle,c=1,direction=0):
   )
   
   # Draw
-  fb.poly(0,0,array.array('h',(
+  fb.poly(0,0,array('h',(
     round( p0[0] ),
     round( p0[1] ),
     round( p1[0] ),
@@ -497,28 +504,28 @@ def draw_play_screen( fb, char, lowbatt=False ):
   ### CHARACTER HEAD ###
   if lowbatt:
     chs2 = _CHAR_HEAD_SIZE//2
-    img.blit_onto( fb, X-chs2, _HEAD_MIDPOINT_Y-chs2, _IMG_LOWBATT )
+    img.blit_onto( fb, _X-chs2, _HEAD_MIDPOINT_Y-chs2, _IMG_LOWBATT )
   else:
     if head.is_file():
       chs2 = _CHAR_HEAD_SIZE//2
-      img.blit_onto( fb, X-chs2, _HEAD_MIDPOINT_Y-chs2, str( head ) )
+      img.blit_onto( fb, _X-chs2, _HEAD_MIDPOINT_Y-chs2, str( head ) )
     else:
-      fb.rect( X-1, _HEAD_MIDPOINT_Y-1, 3, 3, 2, True ) # dot
+      fb.rect( _X-1, _HEAD_MIDPOINT_Y-1, 3, 3, 2, True ) # dot
       chs2 = 2
   
   ######## TITLES ########
   
   #f = eink.Font('/assets/Gallaecia_variable.2f')
   #f.write_to( fb, 'BONK', *XY, (1,) )
-  fb.text( stats['title'], X + chs2 + 5, _TIT_MIDPOINT_Y-4, 1 )
+  fb.text( stats['title'], _X + chs2 + 5, _TIT_MIDPOINT_Y-4, 1 )
   #f = eink.Font('/assets/Vermin.2f')
   #f.write_to( fb, 'L3 Artificer', XY[0], XY[1]+14, (2,) )
   text_len_px = len(stats['subtitle']) * 8
-  fb.text( stats['subtitle'], X - (chs2+text_len_px+5), _TIT_MIDPOINT_Y-4, 1 )
+  fb.text( stats['subtitle'], _X - (chs2+text_len_px+5), _TIT_MIDPOINT_Y-4, 1 )
   
   ######## SPELLS BAR ########
   
-  height = round( _SPL_dY * len(stats['spells']) ) + _SPL_OS
+  height = round( _SPL_DY * len(stats['spells']) ) + _SPL_OS
   fb.hline( _SPL_X, _SPL_Y, _SPL_W, _SPL_C )
   fb.vline( _SPL_X+_SPL_W, _SPL_Y, -height-1, _SPL_C )
   fb.hline( _SPL_X, _SPL_Y-height, _SPL_W, _SPL_C )
@@ -527,17 +534,13 @@ def draw_play_screen( fb, char, lowbatt=False ):
   ######## CHARGES ########
   
   for i,chg in enumerate( stats['charges'] ):
-    fb.text( chg['name'], _CHG_X, _CHG_Y+round( _CHG_dY * i ), _CHG_C )
+    fb.text( chg['name'], _CHG_X, _CHG_Y+round( _CHG_DY * i ), _CHG_C )
   del i,chg
 
   ######## HP BAR ########
   
   # Make way for the ginormous function
   gc_collect()
-  
-  # Fixed geometry (most of this is const() at start of file)
-  RO = RI + _ARC_THICKNESS
-  ARC2_RO = _ARC2_RI + _ARC2_THICKNESS
   
   if hp[2] > 0: # If we have temp HP
     
@@ -558,14 +561,14 @@ def draw_play_screen( fb, char, lowbatt=False ):
     a_tmax = a_curr + ( _ATOTAL * r_tmax )
     
     # Draw solid arc up to max HP
-    drawThickArc( fb, X, Y, RO, RI, _ASTART, a_max, 1 )
+    drawThickArc( fb, _X, _Y, _RO, _RI, _ASTART, a_max, 1 )
     
     # White out the main arc between current and max HP
     if hp[0] < hp[1]:
-      drawThickArc( fb, X, Y, RO-1, RI+1, a_curr, a_max-0.01, 0 )
+      drawThickArc( fb, _X, _Y, _RO-1, _RI+1, a_curr, a_max-0.01, 0 )
     
     # Draw second arc depicting temp HP
-    drawThickArc( fb, X, Y, ARC2_RO, _ARC2_RI, a_curr, a_tmax, 2 )
+    drawThickArc( fb, _X, _Y, _ARC2_RO, _ARC2_RI, a_curr, a_tmax, 2 )
     
     # Tick at half HP, if there's room
     #print(f'a_curr - _ASTART:{a_curr - _ASTART}')
@@ -591,7 +594,7 @@ def draw_play_screen( fb, char, lowbatt=False ):
     
     # Draw solid arc up to max HP
     # Pull back the start slightly, to meet up with the skull
-    drawThickArc( fb, X, Y, RO, RI, _ASTART-_DEG, a_q4, 1 )
+    drawThickArc( fb, _X, _Y, _RO, _RI, _ASTART-_DEG, a_q4, 1 )
     
     # Ticks
     #tick( _ASTART, 1, 1)
@@ -612,18 +615,19 @@ def draw_play_screen( fb, char, lowbatt=False ):
   # Add the skull
   skull = img.load( _IMG_SKULL )
   start = (
-    round( X +RI*sin(_ASTART) ),
-    round( Y -RI*cos(_ASTART) ),
+    round( _X +_RI*sin(_ASTART) ),
+    round( _Y -_RI*cos(_ASTART) ),
   )
   fb.blit( skull, start[0]-16, start[1]-6, 3 )
   
-  # Needle calibration
-  #fb.vline(X-1,120,120,1)
-  #fb.vline(X+1,120,120,1)
-  
   # Start tick (skull instead)
   #tick(_ASTART,2,1)
-  img.save( fb, 'playscreen.2ink')
+  
+  # Needle calibration
+  #fb.vline(_X-1,120,120,1)
+  #fb.vline(_X+1,120,120,1)
+  
+  #img.save( fb, 'playscreen.2ink')
 
 # Draws the character select screen to the given framebuffer
 # Expects 360x240 2bpp framebuffer
@@ -660,13 +664,13 @@ def draw_char_select( fb, chars ):
   a = _ASTART
   for char in chars:
     if char['head'] is not None:
-      x = round( X + _ARC2_RI*sin(a) -hdos )
-      y = round( Y - _ARC2_RI*cos(a) -hdos )
+      x = round( _X + _ARC2_RI*sin(a) -hdos )
+      y = round( _Y - _ARC2_RI*cos(a) -hdos )
       img.blit_onto( fb, x, y, char['head'] )
     else:
       txt = char['dir'].name[:max_name_len]
-      x = round( X + _ARC2_RI*sin(a) - (len(txt)*4) )
-      y = round( Y - _ARC2_RI*cos(a) -4 )
+      x = round( _X + _ARC2_RI*sin(a) - (len(txt)*4) )
+      y = round( _Y - _ARC2_RI*cos(a) -4 )
       fb.rect(x-2, y-2, len(txt)*8 +4, 12, 2, False )
       fb.rect(x-1, y-1, len(txt)*8 +2, 10, 0, True )
       fb.text( txt, x,y, 1 )
@@ -685,7 +689,6 @@ def render_sd_error( e:int, oled ):
     oled.fill(0)
     
     # No-SD graphic
-    # TODO: Load into a pre-existing scratch buffer, then blit_onto oled?
     fb = img.load( _IMG_NOSD )
     oled.blit(fb,0,0)
     

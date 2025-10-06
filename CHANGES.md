@@ -4,13 +4,13 @@ TODO
 GENERAL
 -------
 * Checks on both root menus to not cause problems if destroy() is called twice
-* Since MP 1.26 floats can be constants.  Roll out const() use where applicable.
 * Long/Short rests and other rests:
   - Allow short rest stuff to get reset on long rest, too
   - Allow things with charges that never automatically reset
   - How to handle things that reset at 'dawn', or that don't regain all charges on reset (eg. Armour of Magical Strength)
 * Add a way to spend hit dice outside of a short rest (eg. for Autognonmes with Mending)
 * Rationalise dirname, name, title and subtitle
+* After SD unplug/replug, character matrix dots are still present at character select screen
 Emergency save can save to internal flash if sd unavailable.  Save out to sd when it comes back.
 Have a system.json file
 - Stores 'on-time', and any other non-character-specific data
