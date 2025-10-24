@@ -2,7 +2,7 @@
 # For OLED and LED Matrix displays
 #
 # T. Lloyd
-# 20 Sep 2025
+# 24 Oct 2025
 
 from .common import DeferredTask
 
@@ -42,7 +42,9 @@ class NeedleMenu:
     self.destroy()
   
   def destroy(self):
-    self.hal.unregister( self.cr )
+    if self.cr is not None:
+      self.hal.unregister( self.cr )
+      self.cr = None
   
   def _update(self):
     self.hal.needle.position( self.i / self.max_i )
@@ -92,7 +94,9 @@ class RootMenu:
   
   # When the root menu actually needs to go away
   def destroy(self):
-    self.hal.unregister( self._cr )
+    if self._cr is not None:
+      self.hal.unregister( self._cr )
+      self._cr = None
 
 
 class OledMenu:

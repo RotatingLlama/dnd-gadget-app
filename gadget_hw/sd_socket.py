@@ -3,7 +3,7 @@
 # Sets up SD card automatically when plugged
 #
 # T. Lloyd
-# 14 Sep 2025
+# 24 Oct 2025
 
 import asyncio
 from time import ticks_ms, ticks_diff
@@ -113,7 +113,7 @@ class SD_Socket:
       while tries < _INIT_TRIES:
         
         # This will try to set up the card, and not complain if it fails
-        self._try_init_card()
+        self.try_init_card()
         tries += 1
         
         # If it worked, tell everyone and then exit this try-loop
@@ -135,7 +135,7 @@ class SD_Socket:
       self.card = None
   
   # Sets up the SD card object.  Messes with SPI bus (before putting it back like it was)
-  def _try_init_card(self) -> None:
+  def try_init_card(self) -> None:
     try:
       self.card = sdcard.SDCard( spi=self._spi, cs=self._cs, baudrate=self._baud )
     except OSError:

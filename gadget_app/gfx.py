@@ -1,7 +1,7 @@
 # Drawing functions
 #
 # T. Lloyd
-# 06 Oct 2025
+# 24 Oct 2025
 
 # Standard libraries
 import micropython
@@ -517,11 +517,11 @@ def draw_play_screen( fb, char, lowbatt=False ):
   
   #f = eink.Font('/assets/Gallaecia_variable.2f')
   #f.write_to( fb, 'BONK', *XY, (1,) )
-  fb.text( stats['title'], _X + chs2 + 5, _TIT_MIDPOINT_Y-4, 1 )
+  fb.text( stats['name'], _X + chs2 + 5, _TIT_MIDPOINT_Y-4, 1 )
   #f = eink.Font('/assets/Vermin.2f')
   #f.write_to( fb, 'L3 Artificer', XY[0], XY[1]+14, (2,) )
-  text_len_px = len(stats['subtitle']) * 8
-  fb.text( stats['subtitle'], _X - (chs2+text_len_px+5), _TIT_MIDPOINT_Y-4, 1 )
+  text_len_px = len(stats['title']) * 8
+  fb.text( stats['title'], _X - (chs2+text_len_px+5), _TIT_MIDPOINT_Y-4, 1 )
   
   ######## SPELLS BAR ########
   
