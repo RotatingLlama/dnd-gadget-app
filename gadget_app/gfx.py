@@ -1,7 +1,7 @@
 # Drawing functions
 #
 # T. Lloyd
-# 24 Oct 2025
+# 25 Oct 2025
 
 # Standard libraries
 import micropython
@@ -511,7 +511,7 @@ def draw_play_screen( fb, char, lowbatt=False ):
       chs2 = _CHAR_HEAD_SIZE//2
       img.blit_onto( fb, _X-chs2, _HEAD_MIDPOINT_Y-chs2, str( head ) )
     else:
-      fb.rect( _X-1, _HEAD_MIDPOINT_Y-1, 3, 3, 2, True ) # dot
+      fb.rect( _X-1, _TIT_MIDPOINT_Y-1, 3, 3, 2, True ) # dot
       chs2 = 2
   
   ######## TITLES ########
