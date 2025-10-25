@@ -2,7 +2,7 @@
 # For Micropython v1.26
 #
 # T. Lloyd
-# 05 Oct 2025
+# 24 Oct 2025
 
 
 # TO USE:
@@ -55,7 +55,9 @@ memlog = bytearray(33) # 32-long ring buffer, plus pointer
 
 class Gadget:
   
-  def __init__(self):
+  def __init__(self, x=None ):
+    
+    self.boot_arg = x
     
     # Load modules
     self.hal = HAL()
@@ -74,22 +76,24 @@ class Gadget:
     self.phase_reset = asyncio.Event()
     self.phase_exit = asyncio.Event()
     #
-    self._shutdown = asyncio.Event()
+    self._shutdown = asyncio.ThreadSafeFlag()
     self._exit_loop = asyncio.Event()
     #
     self.play_wait_ani = asyncio.Event()
   
-  # Looks at the directory and returns a list of objects:
-  # {
-  #   'dir' (Path): Character directory,
-  #   'head' (String): Head image,
-  # }
+  # Looks at the directory and generates a list of available Character objects
   def _find_chars(self):
     
-    chars = []
+    # List of directories to investigate
+    cd = self.file_root / CHAR_SUBDIR
+    print( f'Looking for character directories in {str(cd)} ...' )
     # No iterdir() in pathlib.py from [https://github.com/micropython/micropython-lib/blob/master/python-stdlib/pathlib/pathlib.py]
+    dirs = sorted( cd.glob('*'), key=lambda p: str(p) )
+    del cd
+    
+    chars = []
     #for x in self.file_root.iterdir():
-    for x in ( self.file_root / CHAR_SUBDIR ).glob('*'):
+    for x in dirs:
       
       # Have we found a directory?
       if not x.is_dir():
@@ -104,19 +108,23 @@ class Gadget:
       if not ok:
         continue
       
-      # Is there a headshot?
-      head = ( x / CHAR_HEAD )
-      if head.is_file():
-        head = str(head)
-      else:
-        head = None
+      # Try to load the directory as a Character object
+      # Each one takes approx 1 to 1.5kB memory
+      try:
+        c = Character(
+          hal = self.hal,
+          sd_mounted = self._sd_mounted.is_set,
+          chardir = x
+        )
+      except ValueError as e:
+        print( f'Failed to load {x.name}: {str(e)}' )
+        del c
+        continue
       
       # If we're here, we're good
-      chars.append({
-        'dir'  : x,
-        'head' : head,
-      })
-    
+      print(f'Found: {c.stats['name']} ({c.stats['title']}) in /{x.name}/')
+      chars.append( c )
+      
     return chars
   
   # Regularly updates the oled with idle stuff
@@ -203,6 +211,10 @@ class Gadget:
     t( f'M: { ( ma() * 100 ) // _MEM_TOTAL }%', 0,0, 1 )
     
     
+    ### BOOT ARG ###
+    #t( str(self.boot_arg) ,40,16,1)
+    
+    
     ### MEMORY HISTORY GRAPH ###
     #
     mlen = len(memlog) - 1
@@ -250,7 +262,7 @@ class Gadget:
     ### DONE ###
     oled.show()
   
-  # Triggers shutdown
+  # Triggers a clean shutdown
   def power_off(self):
     self._shutdown.set()
   
@@ -268,8 +280,9 @@ class Gadget:
       #print(chars)
       
       # Gets called when a character is chosen
-      # Gets given an index into the list from _find_chars()
+      # Gets given an index into chars
       def set_char( charid ):
+        nonlocal chars
         
         # Ignore character choice if the SD card has gone away
         if not self._sd_mounted.is_set():
@@ -279,11 +292,12 @@ class Gadget:
         self.play_wait_ani.clear()
         
         # Set it up
-        c = Character(
-          hal = self.hal,
-          sd_mounted = self._sd_mounted.is_set,
-          chardir = chars[ charid ]['dir']
-        )
+        c = chars[ charid ]
+        self.character = c
+        del chars
+        print( c.stats )
+        gc.collect()
+        
         if not _DEBUG_DISABLE_EINK:
           c.draw_eink()
         c.draw_mtx()
@@ -292,12 +306,12 @@ class Gadget:
         # Destroy the char select menu
         self.menu.destroy()
         
-        # Set this up
-        self.character = c
-        
         # Trigger the next phase
         self.phase_play.set()
         
+      def shutdown(x):
+        self.play_wait_ani.clear()
+        self.power_off()
       
       # Set up the character chooser needle
       self.menu = menu.NeedleMenu(
@@ -305,7 +319,7 @@ class Gadget:
         prio = HAL_PRIORITY_MENU,
         n = len(chars),
         btn = set_char,
-        back = lambda x: self.hal.needle.wobble() # self.power_off() # self.hal.hw.empty_battery.set()
+        back = shutdown # lambda x: self.hal.needle.wobble() # self.hal.hw.empty_battery.set()
       )
       
       # Tidy up

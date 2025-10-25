@@ -9,12 +9,8 @@ GENERAL
   - How to handle things that reset at 'dawn', or that don't regain all charges on reset (eg. Armour of Magical Strength)
 * Add a way to spend hit dice outside of a short rest (eg. for Autognonmes with Mending)
 * Rationalise dirname, name, title and subtitle
-  - gfx.py : draw_char_select() is given list of already-loaded and verified char objects
-  - Check that Character isn't going to do something horribly memory-hogging to achieve this
-  - Only shows valid ones
-  - Passes back live object to use as self.char
+  - Remove subtitle from character
 * After SD unplug/replug, character matrix dots are still present at character select screen
-* Character select screen back button turns device off
 Emergency save can save to internal flash if sd unavailable.  Save out to sd when it comes back.
 Have a system.json file
 - Stores 'on-time', and any other non-character-specific data
@@ -92,6 +88,7 @@ Invisible Changes
 * hal.py:
   - Added more granular way of locking hardware features using ClientRegistrations (CRs) with hal.register() and unregister()
   - Added hal.needle object and wobble() method
+* Characters are now verified before showing up on char select screen.  Everything on that screen has now already been loaded correctly.
 * Reworked main_sequence() as phase control, like wm project
 * hw.py
   - Replaced running average battery monitor used by voltage_stable() with hysteresis to better eliminate noise

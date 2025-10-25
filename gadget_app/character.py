@@ -1,7 +1,7 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 04 Oct 2025
+# 24 Oct 2025
 
 #import asyncio
 import os
@@ -158,7 +158,7 @@ class Character:
     
     # Where are my files
     self.dir:Path = chardir
-    print(chardir)
+    #print(chardir)
     
     # TODO: Check the dir and its files at this point, raise an error if problems
     
@@ -170,6 +170,7 @@ class Character:
     
     # Stats
     self.stats = {
+      'name' : None,
       'title' : None,
       'subtitle' : None,
       'level' : None,
@@ -193,7 +194,7 @@ class Character:
     self._dirty = False
     
     e = self.load()
-    print(self.stats)
+    #print(self.stats)
     if e:
       raise ValueError(e)
     

@@ -486,7 +486,8 @@ def needle_max_range(hp):
   
 # Draws the play screen to the given framebuffer
 # Expects 360x240 2bpp framebuffer
-# Needs stats dict from Character
+# Needs the Character object
+# lowbatt Boolean will replace character head with a low battery graphic
 def draw_play_screen( fb, char, lowbatt=False ):
   
   # Localisation
@@ -517,11 +518,10 @@ def draw_play_screen( fb, char, lowbatt=False ):
   
   #f = eink.Font('/assets/Gallaecia_variable.2f')
   #f.write_to( fb, 'BONK', *XY, (1,) )
-  fb.text( stats['name'], _X + chs2 + 5, _TIT_MIDPOINT_Y-4, 1 )
   #f = eink.Font('/assets/Vermin.2f')
   #f.write_to( fb, 'L3 Artificer', XY[0], XY[1]+14, (2,) )
-  text_len_px = len(stats['title']) * 8
-  fb.text( stats['title'], _X - (chs2+text_len_px+5), _TIT_MIDPOINT_Y-4, 1 )
+  fb.text( stats['name'], _X - (chs2+(len(stats['name']) * 8)+5), _TIT_MIDPOINT_Y-4, 1 )
+  fb.text( stats['title'], _X + chs2 + 5, _TIT_MIDPOINT_Y-4, 1 )
   
   ######## SPELLS BAR ########
   
@@ -663,12 +663,15 @@ def draw_char_select( fb, chars ):
   
   a = _ASTART
   for char in chars:
-    if char['head'] is not None:
+    
+    # Is there a headshot?
+    head = ( char.dir / CHAR_HEAD )
+    if head.is_file():
       x = round( _X + _ARC2_RI*sin(a) -hdos )
       y = round( _Y - _ARC2_RI*cos(a) -hdos )
-      img.blit_onto( fb, x, y, char['head'] )
+      img.blit_onto( fb, x, y, str(head) )
     else:
-      txt = char['dir'].name[:max_name_len]
+      txt = char.stats['name'][:max_name_len]
       x = round( _X + _ARC2_RI*sin(a) - (len(txt)*4) )
       y = round( _Y - _ARC2_RI*cos(a) -4 )
       fb.rect(x-2, y-2, len(txt)*8 +4, 12, 2, False )
