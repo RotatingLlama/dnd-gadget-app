@@ -1,7 +1,7 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 24 Oct 2025
+# 25 Oct 2025
 
 #import asyncio
 import os
@@ -137,11 +137,18 @@ def val_charge(name,curr,max,reset,i):
     return f'Item {i} invalid reset'
 
 # Individual params.  HP, Spells and Charges are treated differently.
-# Temporary store for value, validation function, conversion function
+# load() will check:
+# 1. Does the parameter name in the file match an entry here?
+# 2. Does its value validate against the function here?
+# 3. Pass it through the conversion function here
+# 4. Store it here
+# 5. Later, load from here into main stats dictionary
+# Complex parameters (HP, spells/charges, hit dice) are dealt with separately.
+# [ value, validation function, conversion function ]
 PARAMS = {
   'name'    : [None, lambda s: val_str(s,'name'),      lambda x:x],
   'title'   : [None, lambda s: val_str(s,'title'),     lambda x:x],
-  'subtitle': [None, lambda s: val_str(s,'subtitle'),  lambda x:x],
+  #'subtitle': [None, lambda s: val_str(s,'subtitle'),  lambda x:x],
   'level'   : [None, lambda v: val_pint(v,'Level'),    int],
   'xp'      : [None, lambda v: val_zpint(v,'XP'),      int],
   'gold'    : [None, lambda v: val_zpint(v,'Gold'),    int],
@@ -169,15 +176,17 @@ class Character:
     self._sd_mounted = sd_mounted
     
     # Stats
+    # This will get populated during load() with all the simple PARAMS (above) so they don't need to be defined here
+    # But hp/hd/spell/cherge structures need to pre-exist
     self.stats = {
-      'name' : None,
-      'title' : None,
-      'subtitle' : None,
-      'level' : None,
-      'xp' : None,
-      'gold' : None,
-      'silver' : None,
-      'copper' : None,
+      #'name' : None,
+      #'title' : None,
+      #'subtitle' : None,
+      #'level' : None,
+      #'xp' : None,
+      #'gold' : None,
+      #'silver' : None,
+      #'copper' : None,
       'hp' : [0,0,0,0], # Current, max, temp, orig_temp
       'hd' : [0,0], # Current, max
       'spells' : [],
@@ -220,7 +229,6 @@ class Character:
         w( '# BASIC INFO\n#\n' )
         w( f'name={st["name"]}\n' )
         w( f'title={st["title"]}\n' )
-        w( f'subtitle={st["subtitle"]}\n' )
         w( f'level={st["level"]}\n' )
         w( f'xp={st["xp"]}\n\n' )
         
@@ -301,6 +309,7 @@ class Character:
     # If that worked, we're done
     if ok:
       print('Saved to original character directory.')
+      self._saver.untouch()
       return True
     
     # Original chardir name will become the base of the new filename
@@ -330,6 +339,7 @@ class Character:
       return False
     
     print('Emergency save successful:',f)
+    self._saver.untouch()
     return True
   
   def save(self):

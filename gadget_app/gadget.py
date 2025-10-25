@@ -2,7 +2,7 @@
 # For Micropython v1.26
 #
 # T. Lloyd
-# 24 Oct 2025
+# 25 Oct 2025
 
 
 # TO USE:
@@ -598,6 +598,7 @@ class Gadget:
       # Stop here if we're shutting down
       if self.phase_exit.is_set():
         break
+    print('Phase controller exiting')
   
   # Start everything, keep refs to looping tasks
   async def main_sequence(self):
@@ -785,6 +786,11 @@ class Gadget:
   async def _shutdown_clean(self):
     await self._shutdown.wait()
     
+    # Make sure we're not about to lose data (emergency_save() will do a normal save, if possible)
+    if self.character is not None:
+      if self.character.is_dirty():
+        self.character.emergency_save( SD_ROOT )
+    
     self.phase_exit.set()
     
     print('Shutting down...')
@@ -825,6 +831,11 @@ class Gadget:
   # Sets the _exit_loop event
   async def _shutdown_batt(self):
     await self.hal.batt_empty.wait()
+    
+    # Make sure we're not about to lose data (emergency_save() will do a normal save, if possible)
+    if self.character is not None:
+      if self.character.is_dirty():
+        self.character.emergency_save( SD_ROOT )
     
     self.phase_exit.set()
     

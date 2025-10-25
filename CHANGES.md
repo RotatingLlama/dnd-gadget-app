@@ -8,9 +8,8 @@ GENERAL
   - Allow things with charges that never automatically reset
   - How to handle things that reset at 'dawn', or that don't regain all charges on reset (eg. Armour of Magical Strength)
 * Add a way to spend hit dice outside of a short rest (eg. for Autognonmes with Mending)
-* Rationalise dirname, name, title and subtitle
-  - Remove subtitle from character
 * After SD unplug/replug, character matrix dots are still present at character select screen
+* When no char head, move the little red dot down to be inline with the text
 Emergency save can save to internal flash if sd unavailable.  Save out to sd when it comes back.
 Have a system.json file
 - Stores 'on-time', and any other non-character-specific data
@@ -68,6 +67,7 @@ Visible Changes
 ---------------
 * Moved all character data to external SD card
   - Unplugging the SD card resets the system (replug will reload the char select menu)
+  - Character 'name' and 'title' are now used, instead of 'title' and 'subtitle'
 * Significantly improved rotary dial responsiveness (hw.py switched to hard interrupts)
 * Improved Play Screen layout and added background image support (background.2ink)
 * Added brightness control for matrix
