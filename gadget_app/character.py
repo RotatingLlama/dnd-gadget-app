@@ -1,7 +1,7 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 25 Oct 2025
+# 26 Oct 2025
 
 #import asyncio
 import os
@@ -148,7 +148,6 @@ def val_charge(name,curr,max,reset,i):
 PARAMS = {
   'name'    : [None, lambda s: val_str(s,'name'),      lambda x:x],
   'title'   : [None, lambda s: val_str(s,'title'),     lambda x:x],
-  #'subtitle': [None, lambda s: val_str(s,'subtitle'),  lambda x:x],
   'level'   : [None, lambda v: val_pint(v,'Level'),    int],
   'xp'      : [None, lambda v: val_zpint(v,'XP'),      int],
   'gold'    : [None, lambda v: val_zpint(v,'Gold'),    int],
@@ -179,14 +178,6 @@ class Character:
     # This will get populated during load() with all the simple PARAMS (above) so they don't need to be defined here
     # But hp/hd/spell/cherge structures need to pre-exist
     self.stats = {
-      #'name' : None,
-      #'title' : None,
-      #'subtitle' : None,
-      #'level' : None,
-      #'xp' : None,
-      #'gold' : None,
-      #'silver' : None,
-      #'copper' : None,
       'hp' : [0,0,0,0], # Current, max, temp, orig_temp
       'hd' : [0,0], # Current, max
       'spells' : [],
@@ -752,12 +743,13 @@ class Character:
   
   # Sets the current hit dice
   # DOES validate
-  # TO BE REMOVED
   def set_hit_dice( self, val ):
-    raise NotImplementedError('Do not do this')
+    
     assert type(val) is int
-    assert val >= 0
-    assert val <= self.stats['hd'][1]
+    
+    # Is the new number valid?
+    if not 0 <= val <= self.stats['hd'][1]:
+      return
     
     self.stats['hd'][0] = val
     

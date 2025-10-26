@@ -2,7 +2,7 @@
 # For Micropython v1.26
 #
 # T. Lloyd
-# 25 Oct 2025
+# 26 Oct 2025
 
 
 # TO USE:
@@ -503,6 +503,17 @@ class Gadget:
           set_rel=lambda dice: char.short_rest(-dice),
           min=0,
           max_d=0,
+          allow_zero=True,
+        )
+      )
+      omi.append(
+        menu.SimpleAdjuster( om, self.hal,
+          prio=HAL_PRIORITY_MENU+2,
+          title='HIT DICE',
+          get_cur=lambda: char.stats['hd'][0],
+          set_abs=char.set_hit_dice,
+          min=0,
+          max=char.stats['hd'][1],
           allow_zero=True,
         )
       )

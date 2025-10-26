@@ -4,12 +4,12 @@ TODO
 GENERAL
 -------
 * Long/Short rests and other rests:
-  - Allow short rest stuff to get reset on long rest, too
+  * Allow short rest stuff to get reset on long rest, too
   - Allow things with charges that never automatically reset
   - How to handle things that reset at 'dawn', or that don't regain all charges on reset (eg. Armour of Magical Strength)
 * Add a way to spend hit dice outside of a short rest (eg. for Autognonmes with Mending)
 * After SD unplug/replug, character matrix dots are still present at character select screen
-* When no char head, move the little red dot down to be inline with the text
+* After applying something on the oled, screen goes back through menu steps instead of straight to idle screen
 Emergency save can save to internal flash if sd unavailable.  Save out to sd when it comes back.
 Have a system.json file
 - Stores 'on-time', and any other non-character-specific data
@@ -59,7 +59,7 @@ Gameplay Changes & Bugfixes
 ----------------
 * Hit dice:
   - Now reset correctly on long rest
-  - Are now spendable on short rest, but can't be incremented except by long rest
+  - Are now spendable on short rest, as well as being individually settable
 * Fixed needle going to wrong place after long rest with temp hp
 * Fixed needle moving wrong way on damage
 
