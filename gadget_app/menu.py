@@ -188,8 +188,9 @@ class OledMenu:
     self._render()
   
   def exit(self):
-    self._leave()
+    # Cascade before triggering CR deregistration, to prevent screen flickering through the cascade
     self.parent.exit()
+    self._leave()
   
   def _leave(self):
     self.s = None
@@ -286,8 +287,9 @@ class SimpleAdjuster:
     self._register()
   
   def exit(self):
-    self._leave()
+    # Cascade before triggering CR deregistration, to prevent screen flickering through the cascade
     self.parent.exit()
+    self._leave()
   
   def render_title(self):
     oled = self.hal.oled
@@ -526,8 +528,9 @@ class FunctionConfirmer:
     oled.show()
   
   def exit(self):
-    self._leave()
+    # Cascade before triggering CR deregistration, to prevent screen flickering through the cascade
     self.parent.exit()
+    self._leave()
   
   def render_title(self):
     oled = self.hal.oled
