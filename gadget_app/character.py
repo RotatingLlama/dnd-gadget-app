@@ -133,8 +133,9 @@ def val_charge(name,curr,max,reset,i):
   if int(curr) > int(max):
     return f'Item {i} charges > max'
   
-  if reset not in ( 'lr', 'sr' ):
-    return f'Item {i} invalid reset'
+  for r in reset:
+    if r not in ( 'lr', 'sr' ):
+      return f'Item {i} invalid reset'
 
 # Individual params.  HP, Spells and Charges are treated differently.
 # load() will check:
@@ -250,7 +251,7 @@ class Character:
           w( f'charge_name:{i}={c["name"]}\n' )
           w( f'charge_curr:{i}={c["curr"]}\n' )
           w( f'charge_max:{i}={c["max"]}\n' )
-          w( f'charge_reset:{i}={c["reset"]}\n#\n' )
+          w( f'charge_reset:{i}={','.join(c["reset"])}\n#\n' )
         #print(gc.mem_alloc())
       
     except OSError:
@@ -463,8 +464,8 @@ class Character:
             file_charges[i]['curr'] = v
           elif k[7] == 'm':
             file_charges[i]['max'] = v
-          else:
-            file_charges[i]['reset'] = v
+          elif k[7] == 'r':
+            file_charges[i]['reset'] = [ r for r in v.split(',') if r != '' ] # Needed to stop empty lists showing up as ['']
     
     # Report errors
     if e:
@@ -522,7 +523,7 @@ class Character:
       # Check we have a full set
       for k in file_charges[i]:
         if file_charges[i][k] is None:
-          return f'Charge {i} has no charge_{k}'
+          return f'Charge {i} has no charge_{k}' # TODO: Don't think this is ever reached?
       
       # Validate
       e = val_charge( **file_charges[i], i=i )
@@ -551,7 +552,7 @@ class Character:
     
     # Reset all short-rest charges to max
     for c in cgs:
-      if c['reset'] == 'sr':
+      if 'sr' in c['reset']:
         c['curr'] = c['max']
     
     self.save()
@@ -589,7 +590,7 @@ class Character:
     
     # Reset all long-rest charges to max
     for c in cgs:
-      if c['reset'] == 'lr':
+      if 'lr' in c['reset']:
         c['curr'] = c['max']
     
     self.save()

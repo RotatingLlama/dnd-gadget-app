@@ -3,23 +3,24 @@ TODO
 
 GENERAL
 -------
-* Long/Short rests and other rests:
-  * Allow short rest stuff to get reset on long rest, too
-  - Allow things with charges that never automatically reset
-  - How to handle things that reset at 'dawn', or that don't regain all charges on reset (eg. Armour of Magical Strength)
-* Add a way to spend hit dice outside of a short rest (eg. for Autognonmes with Mending)
 * After SD unplug/replug, character matrix dots are still present at character select screen
-* After applying something on the oled, screen goes back through menu steps instead of straight to idle screen
-Emergency save can save to internal flash if sd unavailable.  Save out to sd when it comes back.
+Simplify async phase structure in gadget.py.  Just have ordinary functions rather than async waiters?
+How to handle things that reset at 'dawn', or that don't regain all charges on reset (eg. Armour of Magical Strength)
+Saving
+- Emergency save can save to internal flash if sd unavailable.  Save out to sd when it comes back.
+- Allow continued play and just save internally if sd goes away.
+- Save out to SD when it comes back (if the folder's there) and just carry on
+- Change savefile format to json
 Have a system.json file
 - Stores 'on-time', and any other non-character-specific data
   - Used to update RTC for somewhat-meaningful file access times
 - Mandatory file part of directory recognition routine
 - Gets saved at power-down
+Surround on-screen elements with white when drawing, for contrast against full-screen backgrounds
 Way to skip character select screen and just go to last played
-Oled menu to blank out default stuff before drawing
 Add a menu item to view errors that have been caught and logged
-spell slots can reset on short rest for some classes?
+Add a menu item to take a screenshot
+spell slots can reset on short rest for some classes
 Have a "things" class, remove the items/spells distinction?
 get rid of asserts, everywhere - replace with valueerror or something, at least
 Proper error handling
@@ -44,7 +45,6 @@ character.py
 On save, update individual lines rather than rewriting entire file.  To preserve formatting and comments
 Way of communicating error in load()
 implement die()
-Move to JSON format?
 Truncate charge item quantity at load-in, not at led matrix geometry calculation: max charges = 16 - n_spells
 
 menu.py
@@ -56,7 +56,7 @@ Gadget v0.3
 ===========
 
 Gameplay Changes & Bugfixes
-----------------
+---------------------------
 * Hit dice:
   - Now reset correctly on long rest
   - Are now spendable on short rest, as well as being individually settable
@@ -71,6 +71,7 @@ Visible Changes
 * Significantly improved rotary dial responsiveness (hw.py switched to hard interrupts)
 * Improved Play Screen layout and added background image support (background.2ink)
 * Added brightness control for matrix
+* Charges can now be reset by long rest AND short rest.  Separate with a comma in stats.txt, eg. charge_reset:2=lr,sr
 * Added battery monitor
  - Needle now wobbles when battery is low and not charging.
  - New low-battery graphic will display in place of character head.
