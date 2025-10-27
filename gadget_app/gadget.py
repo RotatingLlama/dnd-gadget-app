@@ -2,7 +2,7 @@
 # For Micropython v1.26
 #
 # T. Lloyd
-# 26 Oct 2025
+# 27 Oct 2025
 
 
 # TO USE:
@@ -19,6 +19,7 @@ import asyncio
 import gc
 import vfs
 from micropython import const
+import micropython
 import time
 
 # Other libraries
@@ -69,63 +70,14 @@ class Gadget:
     self._sd_mounted = asyncio.Event()
     self._sd_err = 1 # Start off with 'card not present' until we determine otherwise (gfx.py: _SD_ERRORS)
     
-    # Phase triggers
-    self.phase_select_char = asyncio.Event()
-    self.phase_play = asyncio.ThreadSafeFlag()
-    self._reset = asyncio.ThreadSafeFlag()
-    self.phase_reset = asyncio.Event()
-    self.phase_exit = asyncio.Event()
-    #
+    # Event triggers
     self._shutdown = asyncio.ThreadSafeFlag()
     self._exit_loop = asyncio.Event()
     #
     self.play_wait_ani = asyncio.Event()
-  
-  # Looks at the directory and generates a list of available Character objects
-  def _find_chars(self):
     
-    # List of directories to investigate
-    cd = self.file_root / CHAR_SUBDIR
-    print( f'Looking for character directories in {str(cd)} ...' )
-    # No iterdir() in pathlib.py from [https://github.com/micropython/micropython-lib/blob/master/python-stdlib/pathlib/pathlib.py]
-    dirs = sorted( cd.glob('*'), key=lambda p: str(p) )
-    del cd
-    
-    chars = []
-    #for x in self.file_root.iterdir():
-    for x in dirs:
-      
-      # Have we found a directory?
-      if not x.is_dir():
-        continue
-      
-      # Is everything present that should be?
-      ok = True
-      for f in MANDATORY_CHAR_FILES:
-        if not ( x / f ).is_file():
-          print( f, 'is not present for', x.name)
-          ok = False
-      if not ok:
-        continue
-      
-      # Try to load the directory as a Character object
-      # Each one takes approx 1 to 1.5kB memory
-      try:
-        c = Character(
-          hal = self.hal,
-          sd_mounted = self._sd_mounted.is_set,
-          chardir = x
-        )
-      except ValueError as e:
-        print( f'Failed to load {x.name}: {str(e)}' )
-        del c
-        continue
-      
-      # If we're here, we're good
-      print(f'Found: {c.stats['name']} ({c.stats['title']}) in /{x.name}/')
-      chars.append( c )
-      
-    return chars
+    # Cleans up whatever we're currently doing, ready to do the next thing
+    self.cleanup = lambda : None
   
   # Regularly updates the oled with idle stuff
   async def _oled_runner(self,cr):
@@ -266,364 +218,357 @@ class Gadget:
   def power_off(self):
     self._shutdown.set()
   
-  # Sets up the selector, returns the Character object
-  async def _select_character(self):
+  # Looks at the directory and generates a list of available Character objects
+  def _find_chars(self):
     
-    while True:
-      await self.phase_select_char.wait()
+    # List of directories to investigate
+    cd = self.file_root / CHAR_SUBDIR
+    print( f'Looking for character directories in {str(cd)} ...' )
+    # No iterdir() in pathlib.py from [https://github.com/micropython/micropython-lib/blob/master/python-stdlib/pathlib/pathlib.py]
+    dirs = sorted( cd.glob('*'), key=lambda p: str(p) )
+    del cd
+    
+    chars = []
+    #for x in self.file_root.iterdir():
+    for x in dirs:
       
-      # Takes a framebuffer and a list of chars to show
-      # Returns as many chars as it actually did show
-      chars = gfx.draw_char_select( self.hal.eink, self._find_chars() )
-      if not _DEBUG_DISABLE_EINK:
-        self.hal.eink_send_refresh()
-      #print(chars)
+      # Have we found a directory?
+      if not x.is_dir():
+        continue
       
-      # Gets called when a character is chosen
-      # Gets given an index into chars
-      def set_char( charid ):
-        nonlocal chars
-        
-        # Ignore character choice if the SD card has gone away
-        if not self._sd_mounted.is_set():
-          return
-        
-        # Turn off the wait screen
-        self.play_wait_ani.clear()
-        
-        # Set it up
-        c = chars[ charid ]
-        self.character = c
-        del chars
-        print( c.stats )
-        gc.collect()
-        
-        if not _DEBUG_DISABLE_EINK:
-          c.draw_eink()
-        c.draw_mtx()
-        c.show_curr_hp()
-        
-        # Destroy the char select menu
-        self.menu.destroy()
-        
-        # Trigger the next phase
-        self.phase_play.set()
-        
-      def shutdown(x):
-        self.play_wait_ani.clear()
-        self.power_off()
+      # Is everything present that should be?
+      ok = True
+      for f in MANDATORY_CHAR_FILES:
+        if not ( x / f ).is_file():
+          print( f, 'is not present for', x.name)
+          ok = False
+      if not ok:
+        continue
       
-      # Set up the character chooser needle
-      self.menu = menu.NeedleMenu(
-        hal = self.hal,
-        prio = HAL_PRIORITY_MENU,
-        n = len(chars),
-        btn = set_char,
-        back = shutdown # lambda x: self.hal.needle.wobble() # self.hal.hw.empty_battery.set()
-      )
+      # Try to load the directory as a Character object
+      # Each one takes approx 1 to 1.5kB memory
+      try:
+        c = Character(
+          hal = self.hal,
+          sd_mounted = self._sd_mounted.is_set,
+          chardir = x
+        )
+      except ValueError as e:
+        print( f'Failed to load {x.name}: {str(e)}' )
+        del c
+        continue
       
-      # Tidy up
-      #del cobj, chars, nm, set_char
-      #gc.collect()
+      # If we're here, we're good
+      print(f'Found: {c.stats['name']} ({c.stats['title']}) in /{x.name}/')
+      chars.append( c )
       
-      # Wait for any reset
-      await self.phase_reset.wait()
+    return chars
   
-  #
-  async def _play_screen(self):
+  # Sets up the selector
+  def _select_character(self):
+    
+    # Loading screen
+    self.play_wait_ani.set()
+    
+    # Takes a framebuffer and a list of chars to show
+    # Returns as many chars as it actually did show
+    chars = gfx.draw_char_select( self.hal.eink, self._find_chars() )
+    if not _DEBUG_DISABLE_EINK:
+      self.hal.eink_send_refresh()
+    #print(chars)
+    
+    # Set up the character chooser needle
+    self.menu = menu.NeedleMenu(
+      hal = self.hal,
+      prio = HAL_PRIORITY_MENU,
+      n = len(chars),
+      btn = lambda i: self._set_char( chars[i] ),
+      back = self.power_off # lambda x: self.hal.needle.wobble() # self.hal.hw.empty_battery.set()
+    )
+    
+    def end():
+      self.menu.destroy()
+      self.play_wait_ani.clear()
+      self.cleanup = lambda : None
+    
+    self.cleanup = end
+  
+  # Gets called when a character is chosen
+  # Gets given the selected character object
+  def _set_char(self, char ):
+    
+    # Ignore call if the SD card has gone away
+    if not self._sd_mounted.is_set():
+      return
+    
+    # Clean up the char select screen
+    self.cleanup()
+    
+    # Set it up
+    self.character = char
+    print( char.stats )
+    gc.collect()
+    
+    if not _DEBUG_DISABLE_EINK:
+      char.draw_eink()
+    char.draw_mtx()
+    char.show_curr_hp()
+    
+    self._playscreen()
+  
+  # Sets up the playscreen (inc. all its menus)
+  def _playscreen(self):
     hal = self.hal
-    while True:
-      await self.phase_play.wait()
-      
-      # Localisation
-      rm = menu.RootMenu( self.hal, HAL_PRIORITY_MENU )
-      char = self.character
-      
-      # Create default/idle HAL registration
-      mtx_idle = hal.register(
-        priority=HAL_PRIORITY_IDLE,
-        features=('mtx',),
-        callback=self.character.draw_mtx,
-        name='MtxIdle'
-      )
-      
-      # MATRIX MENU #
-      
-      # Calculate matrix geometry
-      n_spls = len(char.stats['spells']) # Allow as many spells as we have
-      n_chgs = min( 16-n_spls, len(char.stats['charges']) ) # Cut off charges if there are too many to fit
-      n_rows = n_chgs + n_spls # Number of active rows
-      gap = 16 - n_rows
-      
-      # Construct the active rows array for MatrixMenu
-      activerows = bytearray( n_rows )
-      for r in range(n_chgs): # Matrix is indexed from top down - so do the charges first
-        activerows[r] = r
-      for r in range(n_chgs,n_rows): # These are the spells
-        activerows[r] = r + gap # Actual row the spells are on may be offset if there's a gap between them and the charges
-      
-      # Tidy up
-      del n_spls, n_rows, gap, r
-      
-      # Adjust a spell or charge, based on what row of the matrix it's represented on
-      def adj( n:int, row:int ) -> None:
-        if row < n_chgs: # Charges
-          char.set_charge(
-            row,
-            n + char.stats['charges'][row]['curr'],
-            show=True
-          )
-        else: # Spells
-          char.set_spell(
-            15 - row,
-            n + char.stats['spells'][15-row][0],
-            show=True
-          )
-      
-      mm = menu.MatrixMenu(
-          hal,
-          prio=HAL_PRIORITY_MENU+1,
-          active_rows=activerows,
-          inc=lambda r: adj( 1, r ),
-          dec=lambda r: adj( -1, r ),
-          buffer=self.hal.mtx.bitmap,
-          redraw_buffer=lambda: char.draw_mtx( show=False ),
-          send_buffer=self.hal.mtx.update,
-          timeout=_MTX_TIMEOUT,
+    
+    # Localisation
+    rm = menu.RootMenu( self.hal, HAL_PRIORITY_MENU )
+    char = self.character
+    
+    # Create default/idle HAL registration
+    mtx_idle = hal.register(
+      priority=HAL_PRIORITY_IDLE,
+      features=('mtx',),
+      callback=self.character.draw_mtx,
+      name='MtxIdle'
+    )
+    
+    # MATRIX MENU #
+    
+    # Calculate matrix geometry
+    n_spls = len(char.stats['spells']) # Allow as many spells as we have
+    n_chgs = min( 16-n_spls, len(char.stats['charges']) ) # Cut off charges if there are too many to fit
+    n_rows = n_chgs + n_spls # Number of active rows
+    gap = 16 - n_rows
+    
+    # Construct the active rows array for MatrixMenu
+    activerows = bytearray( n_rows )
+    for r in range(n_chgs): # Matrix is indexed from top down - so do the charges first
+      activerows[r] = r
+    for r in range(n_chgs,n_rows): # These are the spells
+      activerows[r] = r + gap # Actual row the spells are on may be offset if there's a gap between them and the charges
+    
+    # Tidy up
+    del n_spls, n_rows, gap, r
+    
+    # Adjust a spell or charge, based on what row of the matrix it's represented on
+    def adj( n:int, row:int ) -> None:
+      if row < n_chgs: # Charges
+        char.set_charge(
+          row,
+          n + char.stats['charges'][row]['curr'],
+          show=True
         )
-      rm.menus.append(mm)
-      
-      
-      # OLED MENU #
-      
-      om = menu.OledMenu(
-        parent=rm,
-        hal=hal,
+      else: # Spells
+        char.set_spell(
+          15 - row,
+          n + char.stats['spells'][15-row][0],
+          show=True
+        )
+    
+    mm = menu.MatrixMenu(
+        hal,
         prio=HAL_PRIORITY_MENU+1,
-        wrap=True
+        active_rows=activerows,
+        inc=lambda r: adj( 1, r ),
+        dec=lambda r: adj( -1, r ),
+        buffer=self.hal.mtx.bitmap,
+        redraw_buffer=lambda: char.draw_mtx( show=False ),
+        send_buffer=self.hal.mtx.update,
+        timeout=_MTX_TIMEOUT,
       )
-      rm.menus.append(om)
-      
-      omi = om.items
-      
-      omi.append(
-        menu.DoubleAdjuster( om, self.hal,
-          prio=HAL_PRIORITY_MENU+2,
-          title='Damage',
-          preview=lambda d: char.damage_calc(-d),
-          get_cur=lambda: ( char.stats['hp'][0], char.stats['hp'][2] ),
-          set_new=lambda d: char.damage(-d),
-          a='     HP',
-          b='Temp HP',
-          adj_rel = lambda d : char.show_hp( char.stats['hp'][0] + char.stats['hp'][2] + d ),
-          min_d=None,
-          max_d=lambda: 0,
-          min_a=None,
-          min_b=lambda: 0,
-          max_a=lambda: char.stats['hp'][1],
-          max_b=lambda: char.stats['hp'][2]
-        )
+    rm.menus.append(mm)
+    
+    
+    # OLED MENU #
+    
+    om = menu.OledMenu(
+      parent=rm,
+      hal=hal,
+      prio=HAL_PRIORITY_MENU+1,
+      wrap=True
+    )
+    rm.menus.append(om)
+    
+    omi = om.items
+    
+    omi.append(
+      menu.DoubleAdjuster( om, self.hal,
+        prio=HAL_PRIORITY_MENU+2,
+        title='Damage',
+        preview=lambda d: char.damage_calc(-d),
+        get_cur=lambda: ( char.stats['hp'][0], char.stats['hp'][2] ),
+        set_new=lambda d: char.damage(-d),
+        a='     HP',
+        b='Temp HP',
+        adj_rel = lambda d : char.show_hp( char.stats['hp'][0] + char.stats['hp'][2] + d ),
+        min_d=None,
+        max_d=lambda: 0,
+        min_a=None,
+        min_b=lambda: 0,
+        max_a=lambda: char.stats['hp'][1],
+        max_b=lambda: char.stats['hp'][2]
       )
-      omi.append(
-        menu.SimpleAdjuster( om, self.hal,
-          prio=HAL_PRIORITY_MENU+2,
-          title='Heal',
-          get_cur=lambda: char.stats['hp'][0],
-          set_rel=char.heal,
-          adj_rel = lambda d : char.show_hp( char.stats['hp'][0] + char.stats['hp'][2] + d ),
-          min_d=0,
-          max_d=None,
-          min=0,
-          max=char.stats['hp'][1]
-        )
+    )
+    omi.append(
+      menu.SimpleAdjuster( om, self.hal,
+        prio=HAL_PRIORITY_MENU+2,
+        title='Heal',
+        get_cur=lambda: char.stats['hp'][0],
+        set_rel=char.heal,
+        adj_rel = lambda d : char.show_hp( char.stats['hp'][0] + char.stats['hp'][2] + d ),
+        min_d=0,
+        max_d=None,
+        min=0,
+        max=char.stats['hp'][1]
       )
-      omi.append(
-        menu.SimpleAdjuster( om, self.hal,
-          prio=HAL_PRIORITY_MENU+2,
-          title='TEMP HP',
-          get_cur=lambda: 0, # Always starts at zero because we're always replacing
-          set_abs=char.set_temp_hp
-        )
+    )
+    omi.append(
+      menu.SimpleAdjuster( om, self.hal,
+        prio=HAL_PRIORITY_MENU+2,
+        title='TEMP HP',
+        get_cur=lambda: 0, # Always starts at zero because we're always replacing
+        set_abs=char.set_temp_hp
       )
-      omi.append(
-        menu.SimpleAdjuster( om, self.hal,
-          prio=HAL_PRIORITY_MENU+2,
-          title='GOLD',
-          get_cur=lambda: char.stats['gold'],
-          set_abs=char.set_gold
-        )
+    )
+    omi.append(
+      menu.SimpleAdjuster( om, self.hal,
+        prio=HAL_PRIORITY_MENU+2,
+        title='GOLD',
+        get_cur=lambda: char.stats['gold'],
+        set_abs=char.set_gold
       )
-      omi.append(
-        menu.SimpleAdjuster( om, self.hal,
-          prio=HAL_PRIORITY_MENU+2,
-          title='SILVER',
-          get_cur=lambda: char.stats['silver'],
-          set_abs=char.set_silver
-        )
+    )
+    omi.append(
+      menu.SimpleAdjuster( om, self.hal,
+        prio=HAL_PRIORITY_MENU+2,
+        title='SILVER',
+        get_cur=lambda: char.stats['silver'],
+        set_abs=char.set_silver
       )
-      omi.append(
-        menu.SimpleAdjuster( om, self.hal,
-          prio=HAL_PRIORITY_MENU+2,
-          title='COPPER',
-          get_cur=lambda: char.stats['copper'],
-          set_abs=char.set_copper
-        )
+    )
+    omi.append(
+      menu.SimpleAdjuster( om, self.hal,
+        prio=HAL_PRIORITY_MENU+2,
+        title='COPPER',
+        get_cur=lambda: char.stats['copper'],
+        set_abs=char.set_copper
       )
-      omi.append(
-        menu.SimpleAdjuster( om, self.hal,
-          prio=HAL_PRIORITY_MENU+2,
-          title='ELECTRUM',
-          get_cur=lambda: char.stats['electrum'],
-          set_abs=char.set_electrum
-        )
+    )
+    omi.append(
+      menu.SimpleAdjuster( om, self.hal,
+        prio=HAL_PRIORITY_MENU+2,
+        title='ELECTRUM',
+        get_cur=lambda: char.stats['electrum'],
+        set_abs=char.set_electrum
       )
-      omi.append(
-        menu.SimpleAdjuster( om, self.hal,
-          prio=HAL_PRIORITY_MENU+2,
-          title='XP',
-          get_cur=lambda: char.stats['xp'],
-          set_abs=char.set_xp
-        )
+    )
+    omi.append(
+      menu.SimpleAdjuster( om, self.hal,
+        prio=HAL_PRIORITY_MENU+2,
+        title='XP',
+        get_cur=lambda: char.stats['xp'],
+        set_abs=char.set_xp
       )
-      omi.append(
-        menu.FunctionConfirmer( om, self.hal,
-          prio=HAL_PRIORITY_MENU+2,
-          title='LONG REST',
-          confirmation='Take long rest',
-          con_func=char.long_rest
-        )
+    )
+    omi.append(
+      menu.FunctionConfirmer( om, self.hal,
+        prio=HAL_PRIORITY_MENU+2,
+        title='LONG REST',
+        confirmation='Take long rest',
+        con_func=char.long_rest
       )
-      omi.append(
-        menu.SimpleAdjuster( om, self.hal,
-          prio=HAL_PRIORITY_MENU+2,
-          title='SHORT REST',
-          #       x x x x x x x x
-          prompt='Use hit dice?',
-          get_cur=lambda: char.stats['hd'][0],
-          set_rel=lambda dice: char.short_rest(-dice),
-          min=0,
-          max_d=0,
-          allow_zero=True,
-        )
+    )
+    omi.append(
+      menu.SimpleAdjuster( om, self.hal,
+        prio=HAL_PRIORITY_MENU+2,
+        title='SHORT REST',
+        #       x x x x x x x x
+        prompt='Use hit dice?',
+        get_cur=lambda: char.stats['hd'][0],
+        set_rel=lambda dice: char.short_rest(-dice),
+        min=0,
+        max_d=0,
+        allow_zero=True,
       )
-      omi.append(
-        menu.SimpleAdjuster( om, self.hal,
-          prio=HAL_PRIORITY_MENU+2,
-          title='HIT DICE',
-          get_cur=lambda: char.stats['hd'][0],
-          set_abs=char.set_hit_dice,
-          min=0,
-          max=char.stats['hd'][1],
-          allow_zero=True,
-        )
+    )
+    omi.append(
+      menu.SimpleAdjuster( om, self.hal,
+        prio=HAL_PRIORITY_MENU+2,
+        title='HIT DICE',
+        get_cur=lambda: char.stats['hd'][0],
+        set_abs=char.set_hit_dice,
+        min=0,
+        max=char.stats['hd'][1],
+        allow_zero=True,
       )
-      omi.append(
-        menu.SimpleAdjuster( om, self.hal,
-          prio=HAL_PRIORITY_MENU+2,
-          title='Brightness',
-          # Get and set using the HAL function
-          # Preview using the driver function, bypassing HAL's memory
-          get_cur=self.hal.mtx.brightness,
-          set_abs=self.hal.mtx.brightness,
-          adj_abs=self.hal.mtx.matrix.brightness, # Daisy, Daisy, give me your answer do...
-          min=0,
-          max=15,
-          allow_zero=True,
-        )
+    )
+    omi.append(
+      menu.SimpleAdjuster( om, self.hal,
+        prio=HAL_PRIORITY_MENU+2,
+        title='Brightness',
+        # Get and set using the HAL function
+        # Preview using the driver function, bypassing HAL's memory
+        get_cur=self.hal.mtx.brightness,
+        set_abs=self.hal.mtx.brightness,
+        adj_abs=self.hal.mtx.matrix.brightness, # Daisy, Daisy, give me your answer do...
+        min=0,
+        max=15,
+        allow_zero=True,
       )
-      omi.append(
-        menu.FunctionConfirmer( om, self.hal,
-          prio=HAL_PRIORITY_MENU+2,
-          title='POWER OFF',
-          confirmation='Shut down',
-          con_func=self.power_off
-        )
+    )
+    omi.append(
+      menu.FunctionConfirmer( om, self.hal,
+        prio=HAL_PRIORITY_MENU+2,
+        title='POWER OFF',
+        confirmation='Shut down',
+        con_func=self.power_off
       )
+    )
+    
+    
+    # ROOT MENU #
+    
+    rm.init(
+      cw  = mm.prev_item,
+      ccw = mm.next_item,
+      btn = om.next_item
+    )
+    
+    # Tidies up things that were set by _playscreen() and does an emergency save, if needed
+    def end():
       
+      # Tidy up UI elements
+      self.menu.destroy()
+      self.hal.unregister( mtx_idle )
       
-      # ROOT MENU #
+      # Make sure everything is saved
+      if self.character.is_dirty():
+        self.character.emergency_save( SD_ROOT )
       
-      rm.init(
-        cw  = mm.prev_item,
-        ccw = mm.next_item,
-        btn = om.next_item
-      )
+      # Wipe the character object
+      self.character = None
       
-      # Assign
-      self.menu = rm
-      
-      # Tidy up
-      del rm, mm, om, omi # , char
-      gc.collect()
-      
-      # Wait for a reset
-      await self.phase_reset.wait()
-      
-      # Tidy up
-      #self.menu.destroy()
-      hal.unregister( mtx_idle )
-      gc.collect()
-  
-  # Called by _wait_mount_sd() on SD card unplug
-  def reset(self):
-    self._reset.set()
-  
-  async def _reset_waiter(self):
-    while True:
-      
-      await self._reset.wait()
-      
-      # Destroy the UI
-      if self.menu is not None:
-        self.menu.destroy()
-      
-      # Make sure these won't auto-start again
-      self.phase_select_char.clear()
-      self.phase_play.clear()
-      
-      self.phase_reset.set()
-      
-  async def _phase_controller(self):
-    print('Phase controller active')
-    while True:
-      
-      # If the SD isn't ready, wait 'til it is
-      await self._sd_mounted.wait()
-      
-      # Wipe the character object if it already exists
-      # Any emergency save should have happened at _try_mount_sd()
-      # If we're here, that means it succeeded.
-      if self.character is not None:
-        self.character = None
-      
-      # Start the first phase
-      self.phase_select_char.set()
-      
-      # First phase starts second phase, and so on.
-      # All wait for phase_reset when they're done
-      
-      # Await a reset
-      await self.phase_reset.wait()
-      self.phase_reset.clear()
-      
-      # Stop here if we're shutting down
-      if self.phase_exit.is_set():
-        break
-    print('Phase controller exiting')
+      # Nothing left to clean up
+      self.cleanup = lambda : None
+    
+    # Assign
+    self.menu = rm
+    self.cleanup = end
   
   # Start everything, keep refs to looping tasks
-  async def main_sequence(self):
+  async def start_app(self):
+    
+    # Indicate progress through the medium of shading
+    self.show_shade(2,0)
     
     # Battery protection
-    earlytasks = asyncio.create_task(asyncio.gather(
+    tasks = asyncio.create_task(asyncio.gather(
       self._shutdown_batt(),
+      self._shutdown_clean(),
       #self._battery_charge_waiter(),
       self._battery_low_waiter(),
       self.wait_ani(),
     ))
-    
-    # Loading screen
-    self.play_wait_ani.set()
     
     # Oled idle stuff
     oledcr = self.hal.register(
@@ -636,19 +581,17 @@ class Gadget:
     
     # Set up the SD manager and wait for the card to be ready
     sd = asyncio.create_task( self._wait_mount_sd() )
-    #await self._sd_mounted.wait() # _hase_controller() now waits for this
     
-    # Kick off the main stuff
-    phases = asyncio.create_task(asyncio.gather(
-      self._select_character(),
-      self._play_screen(),
-      self._phase_controller(),
-      self._reset_waiter(),
-      self._shutdown_clean(),
-    ))
+    # Wait fort the SD to be ready before continuing...
+    await self._sd_mounted.wait()
     
-    # Now wait until we want to stop
+    self.show_shade(2,1)
+    
     print('Startup complete.')
+    
+    # Set up character select scren
+    self._select_character()
+    
     await self._exit_loop.wait()
     print('Exiting.  Adios!')
   
@@ -677,9 +620,6 @@ class Gadget:
       
       # Clear this flag
       self._sd_mounted.clear()
-      
-      # Trigger a phase reset on UNPLUG
-      self.reset()
   
   # Attempt to mount the SD.  Does all checks and returns result.
   # Attempts emergency save, if necessary
@@ -797,12 +737,7 @@ class Gadget:
   async def _shutdown_clean(self):
     await self._shutdown.wait()
     
-    # Make sure we're not about to lose data (emergency_save() will do a normal save, if possible)
-    if self.character is not None:
-      if self.character.is_dirty():
-        self.character.emergency_save( SD_ROOT )
-    
-    self.phase_exit.set()
+    self.cleanup()
     
     print('Shutting down...')
     
@@ -843,12 +778,7 @@ class Gadget:
   async def _shutdown_batt(self):
     await self.hal.batt_empty.wait()
     
-    # Make sure we're not about to lose data (emergency_save() will do a normal save, if possible)
-    if self.character is not None:
-      if self.character.is_dirty():
-        self.character.emergency_save( SD_ROOT )
-    
-    self.phase_exit.set()
+    self.cleanup()
     
     print('Battery empty!  Shutting down...')
     
@@ -897,7 +827,29 @@ class Gadget:
           i += 1
         send()
         f += 1
-          
+  
+  # Display a monotone shading to the matrix
+  # s     The shade to use.  Accepts 0 thru 4
+  # flip  Variant of the selected shade.  Accepts 0 or 1
+  @micropython.viper
+  def show_shade(self, s:int, flip:int ):
+    shades = ptr8(bytearray([ 0x00, 0x00, 0x44, 0x11, 0xaa, 0x55, 0xbb, 0xee, 0xff, 0xff ]))
+    i:int = s * 2
+    if flip == 0:
+      a:int = shades[ i ]
+      b:int = shades[ i + 1 ]
+    else:
+      a:int = shades[ i + 1 ]
+      b:int = shades[ i ]
+    i = 0
+    buf = ptr8(self.hal.mtx.bitmap)
+    while i < 16:
+      buf[i] = a
+      i += 1
+      buf[i] = b
+      i += 1
+    self.hal.mtx.matrix.show()
+  
   # Full bitmap animation on the matrix
   # a = bytes of length 16.f, where f is the number of frames
   # p = int ms to wait in between frames
@@ -918,28 +870,6 @@ class Gadget:
         send()
         await wait(p)
         i += 16
-    
-  async def start_app(self):
-    """ Start the app as a coroutine. This coroutine does
-        not normally return, as the server enters an endless listening loop.
-
-        This method is a coroutine.
-
-        Example::
-
-            import asyncio
-            from wm import WM
-
-            app = WM()
-
-            async def main():
-                await app.start_app()
-
-            asyncio.run(main())
-      """
-    
-    #log(f'Starting event loop...','INFO')
-    await self.main_sequence()
   
   def run(self):
     """ Start the app. This function does not normally return, as
@@ -947,11 +877,12 @@ class Gadget:
 
         Example::
 
-            from wm import WM
-
-            app = WM()
+            from gadget_app import Gadget
             
-            app.run()
+            g = Gadget()
+            
+            g.run()
+            
         """
     asyncio.run( self.start_app() )
 

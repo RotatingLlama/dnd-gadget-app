@@ -3,20 +3,19 @@ TODO
 
 GENERAL
 -------
-* After SD unplug/replug, character matrix dots are still present at character select screen
-Simplify async phase structure in gadget.py.  Just have ordinary functions rather than async waiters?
 How to handle things that reset at 'dawn', or that don't regain all charges on reset (eg. Armour of Magical Strength)
 Saving
-- Emergency save can save to internal flash if sd unavailable.  Save out to sd when it comes back.
-- Allow continued play and just save internally if sd goes away.
-- Save out to SD when it comes back (if the folder's there) and just carry on
+* Emergency save can save to internal flash if sd unavailable.  Save out to sd when it comes back.
+* Allow continued play and just save internally if sd goes away.
+* Save out to SD when it comes back (if the folder's there) and just carry on
 - Change savefile format to json
+Improve the way the matrix animations work.  Viperise?
 Have a system.json file
 - Stores 'on-time', and any other non-character-specific data
   - Used to update RTC for somewhat-meaningful file access times
 - Mandatory file part of directory recognition routine
 - Gets saved at power-down
-Surround on-screen elements with white when drawing, for contrast against full-screen backgrounds
+* Surround on-screen elements with white when drawing, for contrast against full-screen backgrounds
 Way to skip character select screen and just go to last played
 Add a menu item to view errors that have been caught and logged
 Add a menu item to take a screenshot
@@ -90,12 +89,11 @@ Invisible Changes
   - Added more granular way of locking hardware features using ClientRegistrations (CRs) with hal.register() and unregister()
   - Added hal.needle object and wobble() method
 * Characters are now verified before showing up on char select screen.  Everything on that screen has now already been loaded correctly.
-* Reworked main_sequence() as phase control, like wm project
 * hw.py
   - Replaced running average battery monitor used by voltage_stable() with hysteresis to better eliminate noise
   - Made _isr_rot() be Viper
 * character.py
-  - Added short timeout before save, to allow multiple changes to aggregrate together
+  - Added timeout before save, to allow multiple changes to aggregrate together
   - Removed show_all_hp()
 * menu.py
   - Menus now rely on new CR feature from hal.py, replacing previous parent/child system
