@@ -1,6 +1,6 @@
 # Augments MicroPython's native framebuffer module
 # T. Lloyd
-# 16 Jun 2025
+# 29 Oct 2025
 #
 # Improves existing methods:
 # - hline
@@ -9,11 +9,6 @@
 # TODO:
 # - Loosen requirement for width and height to both be divisible by eight?
 # - Implement fonts?
-#
-# Version 1.2-pre
-# date goes here
-# - Moved drawThickArc() out to gfx.py
-# - Changed all assert statements to exceptions
 
 from framebuf import FrameBuffer #, GS2_HMSB, GS4_HMSB, GS8, MONO_HLSB, MONO_HMSB, MONO_VLSB, MVLSB, RGB565
 from .utils import f2b
@@ -65,6 +60,23 @@ class FB(FrameBuffer):
       y -= len-1
     super().vline(x,y,len,c)
   
+  # Draws text, on a solid background (for contrast, etc.)
+  def label(self, s, x, y, c=1, b=0 ):
+    '''
+      s : The text to display
+      x,y : Upper-left corner of text.  Text will be in same pixel position as text() method.
+      c : Colour of text, optional, defaults to 1
+      b : Colour of background, optional, defaults to 0
+    '''
+    
+    w = len(s) * 8
+    h = 8
+    
+    self.rect( x-2, y-1, w+4, h+2, b, True )
+    self.hline( x-1, y-2, w+2, c=b )
+    self.hline( x-1, y+h+1, w+2, c=b )
+    self.text( s, x,y, c )
+    
   #
   #def text(self, txt, x, y, c=1, font=''):
   #  

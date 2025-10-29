@@ -15,7 +15,6 @@ Have a system.json file
   - Used to update RTC for somewhat-meaningful file access times
 - Mandatory file part of directory recognition routine
 - Gets saved at power-down
-* Surround on-screen elements with white when drawing, for contrast against full-screen backgrounds
 Way to skip character select screen and just go to last played
 Add a menu item to view errors that have been caught and logged
 Add a menu item to take a screenshot

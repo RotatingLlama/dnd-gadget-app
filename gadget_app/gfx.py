@@ -1,7 +1,7 @@
 # Drawing functions
 #
 # T. Lloyd
-# 25 Oct 2025
+# 29 Oct 2025
 
 # Standard libraries
 import micropython
@@ -20,7 +20,7 @@ from .common import CHAR_HEAD, CHAR_BG
 # ASSETS
 _IMG_CHOOSE_W = const('/assets/choose_w.2ink')
 _IMG_CHOOSE_R = const('/assets/choose_r.2ink')
-_IMG_SKULL    = const('/assets/skull.2ink')
+_IMG_SKULL    = const('/assets/skull.pi')
 _IMG_LOWBATT  = const('/assets/low_batt.2ink')
 _IMG_DEADBATT = const('/assets/deadbatt.2ink')
 _IMG_NOSD     = const('/assets/nosd.pi')
@@ -49,6 +49,7 @@ _ACENTRE = const( 0 ) # Angle of midpoint of arc (relative to 12 o'clock)
 _ATOTAL  = const( _DEG * 100 ) # Total angle made by arc
 _ASTART  = const( _ACENTRE - (_ATOTAL/2) ) # Angle of start of arc
 _AEND    = const( _ASTART + _ATOTAL ) # Angle of end of arc
+_APX     = const( _DEG * 0.4 ) # Angle of one pixel thickness
 #
 _RI = const(157)
 _ARC_THICKNESS = const(10)
@@ -74,7 +75,7 @@ _TIT_MIDPOINT_Y  = const( 216 )
 #T2_C = const(2)
 
 # Geometry for charges labels
-_CHG_X  = const(3)
+_CHG_X  = const(1)
 _CHG_Y  = const(0)
 _CHG_DY = const(19.7)
 _CHG_C  = const(1)
@@ -448,8 +449,8 @@ def tick(fb, angle,c=1,direction=0):
     p1[1] + t[1],
   )
   
-  # Draw
-  fb.poly(0,0,array('h',(
+  # Geometry
+  g = array('h',(
     round( p0[0] ),
     round( p0[1] ),
     round( p1[0] ),
@@ -458,7 +459,13 @@ def tick(fb, angle,c=1,direction=0):
     round( p2[1] ),
     round( p0[0] + t[0] ),
     round( p0[1] + t[1] ),
-  )),c,True)
+  ))
+  
+  # Draw a filled poly in the correct colour
+  fb.poly( 0,0, g, c, True )
+  
+  # Draw an outline poly in white
+  fb.poly( 0,0, g, 0, False )
   
   # Return the midpoint of the top of the tick
   #return (
@@ -473,7 +480,7 @@ def tick_txt(fb, txt, pt, c ):
   # This function assumes all characters are 8x8
   
   # Draw the text so that the centre of it ends up on the point
-  fb.text(
+  fb.label(
     txt,
     pt[0] - round( len(txt)*8 /2 ),
     pt[1] - 4, # 8/2
@@ -520,12 +527,13 @@ def draw_play_screen( fb, char, lowbatt=False ):
   #f.write_to( fb, 'BONK', *XY, (1,) )
   #f = eink.Font('/assets/Vermin.2f')
   #f.write_to( fb, 'L3 Artificer', XY[0], XY[1]+14, (2,) )
-  fb.text( stats['name'], _X - (chs2+(len(stats['name']) * 8)+5), _TIT_MIDPOINT_Y-4, 1 )
-  fb.text( stats['title'], _X + chs2 + 5, _TIT_MIDPOINT_Y-4, 1 )
+  fb.label( stats['name'], _X - (chs2+(len(stats['name']) * 8)+5), _TIT_MIDPOINT_Y-4, 1 )
+  fb.label( stats['title'], _X + chs2 + 5, _TIT_MIDPOINT_Y-4, 1 )
   
   ######## SPELLS BAR ########
   
   height = round( _SPL_DY * len(stats['spells']) ) + _SPL_OS
+  fb.rect( 0, _SPL_Y-height-1, _SPL_X+_SPL_W+2, height+2, 0, True )
   fb.hline( _SPL_X, _SPL_Y, _SPL_W, _SPL_C )
   fb.vline( _SPL_X+_SPL_W, _SPL_Y, -height-1, _SPL_C )
   fb.hline( _SPL_X, _SPL_Y-height, _SPL_W, _SPL_C )
@@ -534,13 +542,16 @@ def draw_play_screen( fb, char, lowbatt=False ):
   ######## CHARGES ########
   
   for i,chg in enumerate( stats['charges'] ):
-    fb.text( chg['name'], _CHG_X, _CHG_Y+round( _CHG_DY * i ), _CHG_C )
+    fb.label( chg['name'], _CHG_X, _CHG_Y+round( _CHG_DY * i ), _CHG_C )
   del i,chg
 
   ######## HP BAR ########
   
   # Make way for the ginormous function
   gc_collect()
+  
+  # Skull pullback (how far to extend the arc back to meet the skull)
+  spb = _APX * 3
   
   if hp[2] > 0: # If we have temp HP
     
@@ -560,15 +571,18 @@ def draw_play_screen( fb, char, lowbatt=False ):
     a_max  = _ASTART + ( _ATOTAL * r_max )
     a_tmax = a_curr + ( _ATOTAL * r_tmax )
     
+    # Draw white background arc
+    drawThickArc( fb, _X, _Y, _RO+1, _RI-1, _ASTART-spb-_APX, a_max+_APX, 0 )
+    
     # Draw solid arc up to max HP
-    drawThickArc( fb, _X, _Y, _RO, _RI, _ASTART, a_max, 1 )
+    drawThickArc( fb, _X, _Y, _RO, _RI, _ASTART-spb, a_max, 1 )
     
     # White out the main arc between current and max HP
     if hp[0] < hp[1]:
-      drawThickArc( fb, _X, _Y, _RO-1, _RI+1, a_curr, a_max-0.01, 0 )
+      drawThickArc( fb, _X, _Y, _RO-1, _RI+1, a_curr, a_max-_APX, 0 )
     
-    # Draw second arc depicting temp HP
-    drawThickArc( fb, _X, _Y, _ARC2_RO, _ARC2_RI, a_curr, a_tmax, 2 )
+    # Draw white background for second (red) arc depicting temp HP
+    drawThickArc( fb, _X, _Y, _ARC2_RO+1, _ARC2_RI-1, a_curr-_APX, a_tmax+_APX, 0 )
     
     # Tick at half HP, if there's room
     #print(f'a_curr - _ASTART:{a_curr - _ASTART}')
@@ -583,6 +597,9 @@ def draw_play_screen( fb, char, lowbatt=False ):
     # Tmax
     pt = tick( fb, (a_tmax), 2, -1 )
     tick_txt( fb, str( hp[0] + hp[3] ), pt, 2 )
+    
+    # Finally draw the temp HP arc itself
+    drawThickArc( fb, _X, _Y, _ARC2_RO, _ARC2_RI, a_curr, a_tmax, 2 )
   
   else: # No temp HP, normal bar
     
@@ -590,11 +607,11 @@ def draw_play_screen( fb, char, lowbatt=False ):
     a_q1 = _ASTART + ( _ATOTAL * 0.25 )
     a_q2 = _ASTART + ( _ATOTAL * 0.5 )
     a_q3 = _ASTART + ( _ATOTAL * 0.75 )
-    a_q4 = _ASTART + _ATOTAL
+    a_q4 = _AEND
     
     # Draw solid arc up to max HP
-    # Pull back the start slightly, to meet up with the skull
-    drawThickArc( fb, _X, _Y, _RO, _RI, _ASTART-_DEG, a_q4, 1 )
+    drawThickArc( fb, _X, _Y, _RO+1, _RI-1, _ASTART-spb-_APX, a_q4+_APX, 0 )
+    drawThickArc( fb, _X, _Y, _RO, _RI, _ASTART-spb, a_q4, 1 )
     
     # Ticks
     #tick( _ASTART, 1, 1)
