@@ -9,12 +9,17 @@ Saving
 * Allow continued play and just save internally if sd goes away.
 * Save out to SD when it comes back (if the folder's there) and just carry on
 - Change savefile format to json
+- OLED menu and idle screen can draw simultaneously on rare occasions.  Fix this
+  - Both SimpleAdjuster.render_title() and _oled_idle_render() call oled.fill(0) before doing anything, so this shouldn't happen
+  - Neither of the above functions are coroutines or yield during execution
+  - Unclear how/why this happened.  Get a photo nrext time.
 Improve the way the matrix animations work.  Viperise?
-Have a system.json file
-- Stores 'on-time', and any other non-character-specific data
-  - Used to update RTC for somewhat-meaningful file access times
-- Mandatory file part of directory recognition routine
-- Gets saved at power-down
+* Have a system.json file
+  - Determines which character directories to use
+  - Stores 'on-time', and any other non-character-specific data
+    - Used to update RTC for somewhat-meaningful file access times
+  - Mandatory file part of directory recognition routine
+  - Gets saved at power-down
 Way to skip character select screen and just go to last played
 Add a menu item to view errors that have been caught and logged
 Add a menu item to take a screenshot
