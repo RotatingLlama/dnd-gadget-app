@@ -4,11 +4,15 @@ import machine
 import os
 import sdcard
 
-
-def sdtest():
-    spi = machine.SPI(1, sck=machine.Pin(14), mosi=machine.Pin(15), miso=machine.Pin(12), baudrate=400000, polarity=0, phase=0)
+def getspi():
+    spi = machine.SPI(0, sck=machine.Pin(18), mosi=machine.Pin(19), miso=machine.Pin(16), baudrate=400000, polarity=0, phase=0)
     spi.init()  # Ensure right baudrate
-    sd = sdcard.SDCard(spi, machine.Pin(18))  # Compatible with PCB
+    return spi
+
+def sdtest(spi):
+    #spi = machine.SPI(0, sck=machine.Pin(18), mosi=machine.Pin(19), miso=machine.Pin(16), baudrate=400000, polarity=0, phase=0)
+    #spi.init()  # Ensure right baudrate
+    sd = sdcard.SDCard( spi=spi, cs=machine.Pin(2), baudrate=4000000)  # Compatible with PCB
     
     print( sd.ioctl(4,0) )
     print( sd.ioctl(5,0) )
@@ -17,6 +21,8 @@ def sdtest():
     os.mount(vfs, "/fc")
     print("Filesystem check")
     print(os.listdir("/fc"))
+    
+    return
 
     line = "abcdefghijklmnopqrstuvwxyz\n"
     lines = line * 200  # 5400 chars
@@ -66,4 +72,38 @@ def sdtest():
     print()
     print("Tests", "passed" if success else "failed")
 
-sdtest()
+def discon_test(spi):
+    import time
+    
+    sd = sdcard.SDCard( spi=spi, cs=machine.Pin(2), baudrate=4000000)
+    
+    print( sd.ioctl(4,0) )
+    print( sd.ioctl(5,0) )
+    
+    #print(sd.cmd(0, 0, 0x95))
+    
+    vfs = os.VfsFat(sd)
+    os.mount(vfs, "/fc")
+    print("Filesystem check")
+    print(os.listdir("/fc"))
+    print(os.listdir("/fc/non-existanbt"))
+    
+    time.sleep(5)
+    
+    print('waking...')
+    
+    os.umount(vfs)
+    print(os.listdir("/fc"))
+    
+    #print(sd.cmd(0, 0, 0x95))
+    
+    
+    #print( sd.ioctl(4,0) )
+    #print( sd.ioctl(5,0) )
+    #print("Filesystem check")
+    #print(os.listdir("/fc"))
+    
+    
+spi = getspi()
+discon_test(spi)
+#sdtest(spi)
