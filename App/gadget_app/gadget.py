@@ -2,7 +2,7 @@
 # For Micropython v1.26
 #
 # T. Lloyd
-# 27 Oct 2025
+# 02 Nov 2025
 
 
 # TO USE:
@@ -240,7 +240,7 @@ class Gadget:
       ok = True
       for f in MANDATORY_CHAR_FILES:
         if not ( x / f ).is_file():
-          print( f, 'is not present for', x.name)
+          print( f'{f} is not present in /{x.name}/' )
           ok = False
       if not ok:
         continue
@@ -254,7 +254,7 @@ class Gadget:
           chardir = x
         )
       except ValueError as e:
-        print( f'Failed to load {x.name}: {str(e)}' )
+        print( f'Failed to load from /{x.name}/: {str(e)}' )
         del c
         continue
       
@@ -283,7 +283,7 @@ class Gadget:
       prio = HAL_PRIORITY_MENU,
       n = len(chars),
       btn = lambda i: self._set_char( chars[i] ),
-      back = self.power_off # lambda x: self.hal.needle.wobble() # self.hal.hw.empty_battery.set()
+      back = lambda x: self.power_off() # lambda x: self.hal.needle.wobble() # self.hal.hw.empty_battery.set()
     )
     
     def end():

@@ -1,17 +1,23 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 26 Oct 2025
+# 02 Nov 2025
 
 #import asyncio
 import os
 from micropython import const
 from gc import collect as gc_collect
 from .pathlib import Path
+import json
 #import gc
 
 from . import gfx
 from .common import DeferredTask, CHAR_STATS
+
+# When loading from file, load no more than this many of each item
+_MAX_SPELLS = const(9)
+_MAX_CHARGES = const(16)
+_CHG_NAME_MAXLEN = const(45) # 360/8
 
 _SAVE_TIMEOUT = const(30000) # Save contdown, in ms
 
@@ -194,7 +200,17 @@ class Character:
     self.is_saving = self._saver.is_dirty
     self._dirty = False
     
-    e = self.load()
+    #e = self.load()
+    #print(self.stats)
+    #if e:
+    #  raise ValueError(e)
+    
+    #try:
+    #  self.load_json()
+    #except OSError:
+    #  print('could not load json:', str( self.dir / CHAR_STATS ) + '.json' )
+    
+    e = self.load_json()
     #print(self.stats)
     if e:
       raise ValueError(e)
@@ -210,6 +226,7 @@ class Character:
   # Appears to scale with lines written, assume they're being buffered before write
   # ...except memory usage is ~7x eventual filesize
   def _save_file(self, f ) -> bool:
+    raise NotImplementedError('Use JSON version instead')
     st = self.stats
     #print(f'Writing file {f}')
     #print(type(f))
@@ -259,6 +276,32 @@ class Character:
     
     return True
   
+  def _save_file_json(self, f ) -> bool:
+    s = self.stats
+    sf = { k: s[k] for k in PARAMS }
+    sf.update({
+      'hitdice' : dict(zip( ['current','max'], s['hd'] )),
+      'hp'      : dict(zip( [ 'current', 'max', 'temporary' ], s['hp'][:3] )),
+      'spells'  : [ dict(zip(['current','max'],[ sp[0], sp[1] ])) for sp in s['spells'] ],
+      'charges' : [ {
+        'name'    : c['name'],
+        'current' : c['curr'],
+        'max'     : c['max'],
+        'reset'   : c['reset']
+        } for c in s['charges'] ],
+    })
+    #print('internal:',s)
+    #print('savefile:',sf)
+    try:
+      with open( f, 'w') as fd:
+        # Micropython (1.26) doesn't support the indent argument for pretty printing
+        json.dump( sf, fd ) #, separators=(',\n', ': ') )
+        
+    except OSError:
+      return False
+    
+    return True
+  
   def _save_now(self) -> bool:
     
     # If the directory is missing, abandon saving attempt
@@ -274,13 +317,15 @@ class Character:
     ok  = True
     
     # Save out the file, temporarily preserving the previous one
-    ok = ok and self._save_file( f + '.new' )
+    #ok = ok and self._save_file( f + '.new' )
+    ok = ok and self._save_file_json( f + '.new' )
     
     # Ensure the new file is saved
     ok = ok and try_sync()
     
     # Replace the old file
-    ok = ok and self._save_file( f )
+    #ok = ok and self._save_file( f )
+    ok = ok and self._save_file_json( f )
     ok = ok and try_sync()
     
     if not ok:
@@ -323,7 +368,7 @@ class Character:
       i += 1
     
     # Attempt to save to the emergency location
-    if not self._save_file( str(f) ):
+    if not self._save_file_json( str(f) ):
       print('Emergency save FAILED to',f)
       return False
     if not try_sync():
@@ -339,6 +384,7 @@ class Character:
     self._dirty = True
   
   def load(self):
+    raise NotImplementedError('Use JSON version instead')
     
     # Reset the param tracker
     for k in PARAMS:
@@ -537,6 +583,142 @@ class Character:
         'max':  int( file_charges[i]['max'] ),
         'reset':file_charges[i]['reset'],
       })
+  
+  def load_json(self) -> str:
+    
+    # Savefile
+    f = str( self.dir / CHAR_STATS )
+    
+    # Step through the file line by line
+    with open( f, 'r' ) as fd:
+      fs = json.load( fd )
+    
+    del f, fd
+    
+    # Step through the expected simple parameters
+    for k in PARAMS:
+      
+      # Get the parameter object (list)
+      p = PARAMS[k]
+      
+      # Reset the value container - needed?
+      p[0] = None
+      
+      # Try to get the value
+      v = fs.get( k )
+      if v is None:
+        return f'Missing {k}'
+      
+      # Validate the value
+      e = p[1]( v )
+      if e:
+        return e
+      
+      # Convert and temporarily store the value
+      p[0] = p[2]( v )
+    
+    # Get and validate hit dice
+    hdf = fs.get('hitdice')
+    if hdf is None:
+      return 'Missing hitdice'
+    if type(hdf) is not dict:
+      return 'Invalid hitdice'
+    try:
+      hd = [
+        int( hdf.get('current') ),
+        int( hdf.get('max') ),
+      ]
+    except ( ValueError, TypeError ) as e:
+      return 'Invalid hitdice'
+    if hd[1] <= 0:
+      return 'Invalid max hitdice'
+    if not ( 0 <= hd[0] <= hd[1] ):
+      return 'Invalid hitdice'
+    
+    # Get and validate HP
+    hpf = fs.get( 'hp' )
+    if hpf is None:
+      return 'Missing hp'
+    if type(hpf) is not dict:
+      return 'Invalid hp'
+    try:
+      hp = [
+        int( hpf.get('current') ),
+        int( hpf.get('max') ),
+        int( hpf.get('temporary') ),
+        int( hpf.get('temporary') ),
+      ]
+    except ( ValueError, TypeError ) as e:
+      return 'Invalid hp'
+    if hp[1] <= 0:
+      return 'Invalid max hp'
+    if not ( 0 <= hp[0] <= hp[1] ):
+      return 'Invalid current hp'
+    if hp[2] < 0:
+      return 'Invalid temporary hp'
+    
+    # Get and validate spells
+    spf = fs.get( 'spells' )
+    if spf is None:
+      return 'Missing spell slots'
+    if type(spf) is not list:
+      return 'Invalid spell slots list'
+    sp = [None] * min( _MAX_SPELLS, len(spf) )
+    for i, s in enumerate( spf[:_MAX_SPELLS] ):
+      if type(s) is not dict:
+        return f'Bad spell slot #{i+1}'
+      try:
+        sp[i] = [ int( s.get('current') ), int( s.get('max') ) ]
+      except ( ValueError, TypeError ) as e:
+        return f'Bad spell slot #{i+1}'
+      if sp[i][1] <= 0:
+        return f'Bad spell slot #{i+1}'
+      if not ( 0 <= sp[i][0] <= sp[i][1] ):
+        return f'Bad spell slot #{i+1}'
+    
+    # Get and validate charges
+    chf = fs.get('charges')
+    if chf is None:
+      return 'Missing charges'
+    if type(chf) is not list:
+      return 'Invalid charges list'
+    ch = [None] * min( _MAX_CHARGES, len(chf) )
+    for i, c in enumerate( chf[:_MAX_CHARGES] ):
+      if type(c) is not dict:
+        return f'Bad charge #{i+1}'
+      try:
+        ch[i] = {
+          'name' : str( c.get('name') )[:_CHG_NAME_MAXLEN],
+          'curr' : int( c.get('current') ),
+          'max'  : int( c.get('max') ),
+          'reset' : [],
+        }
+      except ( ValueError, TypeError ) as e:
+        return f'Bad charge #{i+1}'
+      if ch[i]['max'] <= 0:
+        return f'Bad charge #{i+1}'
+      if not ( 0 <= ch[i]['curr'] <= ch[i]['max'] ):
+        return f'Bad charge #{i+1}'
+      rst = c.get('reset')
+      if rst is None:
+        return f'Charge #{i+1} has missing reset'
+      if type(rst) is not list:
+        return f'Charge #{i+1} has invalid reset'
+      for r in rst:
+        if r in ( 'lr', 'sr' ):
+          ch[i]['reset'].append( r )
+    
+    # Assemble
+    self.stats = { k: PARAMS[k][0] for k in PARAMS }
+    self.stats.update({
+      'hd' : hd,
+      'hp' : hp,
+      'spells' : sp,
+      'charges' : ch,
+    })
+    
+    #print( 'load_json():', stats )
+    return ''
   
   # DOES NOT VALIDATE hit dice
   def short_rest(self, hit_dice=0, show=True):

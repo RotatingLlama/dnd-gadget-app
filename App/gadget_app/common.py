@@ -1,7 +1,7 @@
 # Misc common data and code
 #
 # T. Lloyd
-# 29 Oct 2025
+# 02 Nov 2025
 
 from micropython import const
 import asyncio
@@ -17,7 +17,7 @@ SD_ROOT = const('/sd')
 SD_DIR = const('TTRPG')
 #
 CHAR_SUBDIR = const('Characters')
-CHAR_STATS = const('stats.txt')
+CHAR_STATS = const('stats.json')
 CHAR_HEAD = const('head.pi')
 CHAR_BG = const('background.pi')
 

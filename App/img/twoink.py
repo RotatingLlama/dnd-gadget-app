@@ -12,6 +12,9 @@ from micropython import const
 from . import fb as framebuf
 from .utils import b2f
 
+print('twoink.py is DEPRECATED - use libpi instead!')
+
+
 # Saves a GS2_HMSB framebuffer object to a .2ink file
 def save_GS2_HMSB( fb, filename ):
   
