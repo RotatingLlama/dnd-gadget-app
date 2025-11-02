@@ -35,7 +35,7 @@ The app expects the following directory structure on the SD card:
 
 Images
 ------
-The app uses a custom, low-complexity bitmap format called `.pi` for all of its images.  The format is designed to be simple for microcontrollers to work with, and specifically easy for Micropython to load into memory and use directly with its builtin `framebuf` class.  You can convert between `.pi` and most common image formats using the `imgconvert` scripts in the `Supporting Code` directory.
+The app uses a custom, low-complexity bitmap format called `.pi` for all of its images.  The format is designed to be simple for microcontrollers to work with, and specifically easy for MicroPython to load into memory and use directly with its builtin [`framebuf`](https://docs.micropython.org/en/latest/library/framebuf.html) class.  You can convert between `.pi` and most common image formats using the `imgconvert` scripts in the `Supporting Code` directory.
 
 The e-ink display supports three colours: white, black and red.  The `.pi` format also supports a 1-bit alpha channel, with transparent areas represented as a fourth colour.  When preparing images for conversion to `.pi`, use the following colour pallet:
 - White: `#ffffff`

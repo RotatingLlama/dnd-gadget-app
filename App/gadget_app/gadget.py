@@ -581,7 +581,7 @@ class Gadget:
     # Set up the SD manager and wait for the card to be ready
     sd = asyncio.create_task( self._wait_mount_sd() )
     
-    # Wait fort the SD to be ready before continuing...
+    # Wait for the SD to be ready before continuing...
     await self._sd_mounted.wait()
     
     self.show_shade(2,1)
@@ -720,15 +720,16 @@ class Gadget:
   
   # Moves the needle while clearing the e-ink
   async def _clear_eink_needle(self):
-    start = time.ticks_ms()
-    self.hal.eink_clear_refresh()
     pos = self.hal.needle.position
-    not_busy = self.hal.eink.unbusy.is_set
-    t = 0
-    while t < 3000 or not not_busy(): # While eink is busy (flag may flicker between send and refresh)
-      t = time.ticks_diff( time.ticks_ms(), start ) # Time elapsed
-      pos( min( 1, t / _EINK_BLANK_MS ) ) # Set the needle
-      await asyncio.sleep_ms(30)
+    if not _DEBUG_DISABLE_EINK:
+      start = time.ticks_ms()
+      self.hal.eink_clear_refresh()
+      not_busy = self.hal.eink.unbusy.is_set
+      t = 0
+      while t < 3000 or not not_busy(): # While eink is busy (flag may flicker between send and refresh)
+        t = time.ticks_diff( time.ticks_ms(), start ) # Time elapsed
+        pos( min( 1, t / _EINK_BLANK_MS ) ) # Set the needle
+        await asyncio.sleep_ms(30)
     pos(0) # Needle to zero
     
   # Waits for _shutdown event and tidies everything up

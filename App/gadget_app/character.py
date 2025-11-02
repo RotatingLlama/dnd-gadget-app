@@ -159,7 +159,6 @@ def val_charge(name,curr,max,reset,i):
 PARAMS = {
   'name'    : [None, lambda s: val_str(s,'name'),      lambda x:x],
   'title'   : [None, lambda s: val_str(s,'title'),     lambda x:x],
-  'level'   : [None, lambda v: val_pint(v,'Level'),    int],
   'xp'      : [None, lambda v: val_zpint(v,'XP'),      int],
   'gold'    : [None, lambda v: val_zpint(v,'Gold'),    int],
   'silver'  : [None, lambda v: val_zpint(v,'Silver'),  int],
@@ -204,9 +203,6 @@ class Character:
     self._dirty = False
     
     self._load()
-    #print(self.stats)
-    
-    gc_collect()
   
   def is_dirty(self):
     return self._dirty

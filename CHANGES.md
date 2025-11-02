@@ -20,10 +20,10 @@ GENERAL
   - Mandatory file part of directory recognition routine
   - Gets saved at power-down
 * Don't show 'sd missing' graphic at boot unless sd is actually missing
-- Way to skip character select screen and just go to last played
 * Hierarchical menus
   - Add a menu item to view errors that have been caught and logged
   - Add a menu item to take a screenshot
+- Way to skip character select screen and just go to last played
 - spell slots can reset on short rest for some classes
 - Have a "things" class, remove the items/spells distinction?
 - get rid of asserts, everywhere - replace with valueerror or something, at least
@@ -46,17 +46,16 @@ img
 
 character.py
 ------------
-- On save, update individual lines rather than rewriting entire file.  To preserve formatting and comments
 - Implement die()
 - Truncate charge item quantity at load-in, not at led matrix geometry calculation: max charges = 16 - n_spells
 
 menu.py
 -------
-* Option to scroll faster when adjusting a large number - still needed with irq improvement?
+* Option to scroll faster when adjusting a large number
 
 
-Gadget v0.4
-===========
+Gadget v0.4 - WIP
+=================
 
 Gameplay Changes & Bugfixes
 ---------------------------
@@ -65,6 +64,7 @@ Gameplay Changes & Bugfixes
 Visible Changes
 ---------------
 * Changed savefiles from custom format to JSON
+  - Removed 'level' from savefile as it wasn't being used for anything
 
 Invisible Changes
 -----------------
