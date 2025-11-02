@@ -29,7 +29,7 @@ from . import pathlib
 from .common import CHAR_STATS, SD_ROOT, SD_DIR, CHAR_SUBDIR, CHAR_HEAD, HAL_PRIORITY_MENU, HAL_PRIORITY_IDLE, HAL_PRIORITY_SHUTDOWN
 from . import menu
 from .hal import HAL
-from .character import Character
+from .character import Character, CharacterError
 from . import gfx
 
 _DEBUG_DISABLE_EINK = const(False)
@@ -253,9 +253,8 @@ class Gadget:
           sd_mounted = self._sd_mounted.is_set,
           chardir = x
         )
-      except ValueError as e:
+      except CharacterError as e:
         print( f'Failed to load from /{x.name}/: {str(e)}' )
-        del c
         continue
       
       # If we're here, we're good

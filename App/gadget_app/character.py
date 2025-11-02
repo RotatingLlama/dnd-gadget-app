@@ -9,6 +9,7 @@ from micropython import const
 from gc import collect as gc_collect
 from .pathlib import Path
 import json
+import errno
 #import gc
 
 from . import gfx
@@ -20,6 +21,9 @@ _MAX_CHARGES = const(16)
 _CHG_NAME_MAXLEN = const(45) # 360/8
 
 _SAVE_TIMEOUT = const(30000) # Save contdown, in ms
+
+class CharacterError( RuntimeError ):
+  pass
 
 # Calls os.sync(), but wrapped for compatibility with different Python behaviours
 # https://github.com/micropython/micropython/issues/11449
@@ -170,10 +174,9 @@ class Character:
   def __init__(self, hal, sd_mounted, chardir:Path ):
     
     # Where are my files
+    if not chardir.is_dir():
+      raise CharacterError('Directory does not exist!')
     self.dir:Path = chardir
-    #print(chardir)
-    
-    # TODO: Check the dir and its files at this point, raise an error if problems
     
     # Top-level ref
     self.hal = hal
@@ -200,20 +203,8 @@ class Character:
     self.is_saving = self._saver.is_dirty
     self._dirty = False
     
-    #e = self.load()
+    self._load()
     #print(self.stats)
-    #if e:
-    #  raise ValueError(e)
-    
-    #try:
-    #  self.load_json()
-    #except OSError:
-    #  print('could not load json:', str( self.dir / CHAR_STATS ) + '.json' )
-    
-    e = self.load_json()
-    #print(self.stats)
-    if e:
-      raise ValueError(e)
     
     gc_collect()
   
@@ -222,61 +213,7 @@ class Character:
   
   # Blindly overwrites f with the save data
   # Return bool indicating success/failure
-  # Allocates ~7kB memory every time it runs
-  # Appears to scale with lines written, assume they're being buffered before write
-  # ...except memory usage is ~7x eventual filesize
   def _save_file(self, f ) -> bool:
-    raise NotImplementedError('Use JSON version instead')
-    st = self.stats
-    #print(f'Writing file {f}')
-    #print(type(f))
-    
-    try:
-      with open( f, 'w') as fd:
-        w = fd.write
-        
-        w( '# BASIC INFO\n#\n' )
-        w( f'name={st["name"]}\n' )
-        w( f'title={st["title"]}\n' )
-        w( f'level={st["level"]}\n' )
-        w( f'xp={st["xp"]}\n\n' )
-        
-        w('# CURRENCY\n#\n')
-        w( f'gold={st["gold"]}\n' )
-        w( f'silver={st["silver"]}\n' )
-        w( f'copper={st["copper"]}\n' )
-        w( f'electrum={st["electrum"]}\n\n' )
-        
-        w('# HIT POINTS\n#\n')
-        w( f'hp_current={st["hp"][0]}\n' )
-        w( f'hp_max={st["hp"][1]}\n' )
-        w( f'hp_temp={st["hp"][2]}\n\n' )
-        
-        w('# HIT DICE\n#\n')
-        w( f'hd_current={st["hd"][0]}\n' )
-        w( f'hd_max={st["hd"][1]}\n\n' )
-        #print(gc.mem_alloc())
-        
-        w('# SPELLS\n#\n')
-        for i,s in enumerate(st['spells']):
-          w( f'spell_curr:{i}={s[0]}\n' )
-          w( f'spell_max:{i}={s[1]}\n#\n' )
-        #print(gc.mem_alloc())
-        
-        w('\n# ITEMS/THINGS WITH CHARGES\n#\n')
-        for i,c in enumerate(st['charges']):
-          w( f'charge_name:{i}={c["name"]}\n' )
-          w( f'charge_curr:{i}={c["curr"]}\n' )
-          w( f'charge_max:{i}={c["max"]}\n' )
-          w( f'charge_reset:{i}={','.join(c["reset"])}\n#\n' )
-        #print(gc.mem_alloc())
-      
-    except OSError:
-      return False
-    
-    return True
-  
-  def _save_file_json(self, f ) -> bool:
     s = self.stats
     sf = { k: s[k] for k in PARAMS }
     sf.update({
@@ -290,8 +227,7 @@ class Character:
         'reset'   : c['reset']
         } for c in s['charges'] ],
     })
-    #print('internal:',s)
-    #print('savefile:',sf)
+    
     try:
       with open( f, 'w') as fd:
         # Micropython (1.26) doesn't support the indent argument for pretty printing
@@ -317,15 +253,13 @@ class Character:
     ok  = True
     
     # Save out the file, temporarily preserving the previous one
-    #ok = ok and self._save_file( f + '.new' )
-    ok = ok and self._save_file_json( f + '.new' )
+    ok = ok and self._save_file( f + '.new' )
     
     # Ensure the new file is saved
     ok = ok and try_sync()
     
     # Replace the old file
-    #ok = ok and self._save_file( f )
-    ok = ok and self._save_file_json( f )
+    ok = ok and self._save_file( f )
     ok = ok and try_sync()
     
     if not ok:
@@ -368,7 +302,7 @@ class Character:
       i += 1
     
     # Attempt to save to the emergency location
-    if not self._save_file_json( str(f) ):
+    if not self._save_file( str(f) ):
       print('Emergency save FAILED to',f)
       return False
     if not try_sync():
@@ -383,217 +317,17 @@ class Character:
     self._saver.touch()
     self._dirty = True
   
-  def load(self):
-    raise NotImplementedError('Use JSON version instead')
-    
-    # Reset the param tracker
-    for k in PARAMS:
-      PARAMS[k][0] = None
-    
-    # Check here for directory / file presense
-    # Alert user if error
-    
-    # Savefile
-    f = str( self.dir / CHAR_STATS )
-    
-    # These will hold data from the savefile before it's validated
-    file_hp = [None]*3
-    file_hd = [None]*2
-    file_spells = []
-    file_charges = []
-    for i in range(8):
-      file_spells.append( [None,None] )
-      file_charges.append({
-        'name':None,
-        'curr':None,
-        'max':None,
-        'reset':None
-      })
-    
-    # Error tracker
-    e = None
+  def _load(self):
     
     # Step through the file line by line
-    with open( f, 'r' ) as fd:
-      while True:
-        
-        # Get the line
-        line = fd.readline()
-        
-        # Stop at EoF
-        if not line:
-          break
-        
-        # Initial processing
-        line = line.strip()
-        #
-        # Remove comments
-        x = line.find('#')
-        if x >= 0:
-          line = line[:x]
-        #
-        # Find delimiter
-        x = line.find('=')
-        
-        # No delimiter (-1) or no key (0)? skip
-        if x <= 0:
-          continue
-        
-        # Get the key and val from the line
-        k = line[:x]
-        v = line[x+1:]
-        
-        # For individual parameters
-        p = PARAMS.get(k)
-        if p is not None:
-          
-          # Validate the value
-          e = p[1]( v )
-          if e:
-            break
-          
-          # Convert and temporarily store the value
-          PARAMS[k][0] = p[2]( v )
-          continue
-        
-        # If it's relating to HP, save it and check later
-        if k == 'hp_current':
-          file_hp[0] = v
-          continue
-        if k == 'hp_max':
-          file_hp[1] = v
-          continue
-        if k == 'hp_temp':
-          file_hp[2] = v
-          continue
-        
-        # If it's relating to hit dice, save it and check later
-        if k == 'hd_current':
-          file_hd[0] = v
-          continue
-        if k == 'hd_max':
-          file_hd[1] = v
-          continue
-        
-        # Spells and charges
-        x = k.find(':')
-        if x <= 0:
-          continue
-        
-        # Key and spell/charge index
-        i = k[x+1:]
-        k = k[:x]
-        
-        # Check key
-        if k not in ('spell_curr','spell_max','charge_name','charge_curr','charge_max','charge_reset'):
-          continue
-        
-        # Check index
-        e = val_zpint(i,f'{k} index')
-        if e:
-          break
-        i = int(i)
-        if i >= 8:
-          e = f'{k} index too high'
-          break
-        
-        # Temporarily store the value for checking later
-        if k[0] == 's': # Spell
-          if k[6] == 'c': # Curr
-            file_spells[i][0] = v
-          else: # Max
-            file_spells[i][1] = v
-        else: # Charge
-          if k[7] == 'n':
-            file_charges[i]['name'] = v
-          elif k[7] == 'c':
-            file_charges[i]['curr'] = v
-          elif k[7] == 'm':
-            file_charges[i]['max'] = v
-          elif k[7] == 'r':
-            file_charges[i]['reset'] = [ r for r in v.split(',') if r != '' ] # Needed to stop empty lists showing up as ['']
-    
-    # Report errors
-    if e:
-      return e
-    
-    # Individual params have already been validated
-    # But did we get a full set?
-    for k in PARAMS:
-      if PARAMS[k][0] is None:
-        return 'Missing '+k
-      self.stats[k] = PARAMS[k][0]
-    
-    # Validate/ingest HP
-    e = val_hp( *file_hp )
-    if e:
-      return e
-    self.stats['hp'][0] = int( file_hp[0] )
-    self.stats['hp'][1] = int( file_hp[1] )
-    self.stats['hp'][2] = int( file_hp[2] )
-    self.stats['hp'][3] = int( file_hp[2] ) # not a typo
-    
-    # Validate/ingest hit dice
-    e = val_hd( *file_hd )
-    if e:
-      return e
-    self.stats['hd'][0] = int( file_hd[0] )
-    self.stats['hd'][1] = int( file_hd[1] )
-    
-    # Validate/ingest spells
-    for i in range(8):
-      
-      # If we reach an empty slot, stop
-      if file_spells[i][0] is None:
-        break
-      
-      # If we were given a current but not a max
-      if file_spells[i][1] is None:
-        return f'Spell slot {i} has no max'
-      
-      # Validate
-      e = val_spell( *file_spells[i], i )
-      if e:
-        return e
-      
-      # Record
-      self.stats['spells'].append([ int(file_spells[i][0]), int(file_spells[i][1]) ])
-    
-    # Validate/ingest charges
-    for i in range(8):
-      
-      # If we reach an empty slot, stop
-      if file_charges[i]['name'] is None:
-        break
-      
-      # Check we have a full set
-      for k in file_charges[i]:
-        if file_charges[i][k] is None:
-          return f'Charge {i} has no charge_{k}' # TODO: Don't think this is ever reached?
-      
-      # Validate
-      e = val_charge( **file_charges[i], i=i )
-      if e:
-        return e
-      
-      # Record
-      self.stats['charges'].append({
-        'name': file_charges[i]['name'],
-        'curr': int( file_charges[i]['curr'] ),
-        'max':  int( file_charges[i]['max'] ),
-        'reset':file_charges[i]['reset'],
-      })
-  
-  def load_json(self) -> str:
-    
-    # Savefile
-    f = str( self.dir / CHAR_STATS )
-    
-    # Step through the file line by line
-    with open( f, 'r' ) as fd:
-      fs = json.load( fd )
-    
-    del f, fd
+    try:
+      with open( str( self.dir / CHAR_STATS ), 'r' ) as fd:
+        fs = json.load( fd )
+    except OSError as e:
+      if e.errno == errno.ENOENT:
+        raise CharacterError('Savefile does not exist!')
+      else:
+        raise CharacterError(f'Could not open save file: {errno.errorcode[e.errno]}')
     
     # Step through the expected simple parameters
     for k in PARAMS:
@@ -607,12 +341,12 @@ class Character:
       # Try to get the value
       v = fs.get( k )
       if v is None:
-        return f'Missing {k}'
+        raise CharacterError( f'Missing {k}' )
       
       # Validate the value
       e = p[1]( v )
       if e:
-        return e
+        raise CharacterError(e)
       
       # Convert and temporarily store the value
       p[0] = p[2]( v )
@@ -620,27 +354,27 @@ class Character:
     # Get and validate hit dice
     hdf = fs.get('hitdice')
     if hdf is None:
-      return 'Missing hitdice'
+      raise CharacterError('Missing hitdice')
     if type(hdf) is not dict:
-      return 'Invalid hitdice'
+      raise CharacterError('Invalid hitdice')
     try:
       hd = [
         int( hdf.get('current') ),
         int( hdf.get('max') ),
       ]
     except ( ValueError, TypeError ) as e:
-      return 'Invalid hitdice'
+      raise CharacterError('Invalid hitdice')
     if hd[1] <= 0:
-      return 'Invalid max hitdice'
+      raise CharacterError('Invalid max hitdice')
     if not ( 0 <= hd[0] <= hd[1] ):
-      return 'Invalid hitdice'
+      raise CharacterError('Invalid hitdice')
     
     # Get and validate HP
     hpf = fs.get( 'hp' )
     if hpf is None:
-      return 'Missing hp'
+      raise CharacterError('Missing hp')
     if type(hpf) is not dict:
-      return 'Invalid hp'
+      raise CharacterError('Invalid hp')
     try:
       hp = [
         int( hpf.get('current') ),
@@ -649,43 +383,43 @@ class Character:
         int( hpf.get('temporary') ),
       ]
     except ( ValueError, TypeError ) as e:
-      return 'Invalid hp'
+      raise CharacterError('Invalid hp')
     if hp[1] <= 0:
-      return 'Invalid max hp'
+      raise CharacterError('Invalid max hp')
     if not ( 0 <= hp[0] <= hp[1] ):
-      return 'Invalid current hp'
+      raise CharacterError('Invalid current hp')
     if hp[2] < 0:
-      return 'Invalid temporary hp'
+      raise CharacterError('Invalid temporary hp')
     
     # Get and validate spells
     spf = fs.get( 'spells' )
     if spf is None:
-      return 'Missing spell slots'
+      raise CharacterError('Missing spell slots')
     if type(spf) is not list:
-      return 'Invalid spell slots list'
+      raise CharacterError('Invalid spell slots list')
     sp = [None] * min( _MAX_SPELLS, len(spf) )
     for i, s in enumerate( spf[:_MAX_SPELLS] ):
       if type(s) is not dict:
-        return f'Bad spell slot #{i+1}'
+        raise CharacterError( f'Bad spell slot #{i+1}' )
       try:
         sp[i] = [ int( s.get('current') ), int( s.get('max') ) ]
       except ( ValueError, TypeError ) as e:
-        return f'Bad spell slot #{i+1}'
+        raise CharacterError( f'Bad spell slot #{i+1}' )
       if sp[i][1] <= 0:
-        return f'Bad spell slot #{i+1}'
+        raise CharacterError( f'Bad spell slot #{i+1}' )
       if not ( 0 <= sp[i][0] <= sp[i][1] ):
-        return f'Bad spell slot #{i+1}'
+        raise CharacterError( f'Bad spell slot #{i+1}' )
     
     # Get and validate charges
     chf = fs.get('charges')
     if chf is None:
-      return 'Missing charges'
+      raise CharacterError( 'Missing charges' )
     if type(chf) is not list:
-      return 'Invalid charges list'
+      raise CharacterError( 'Invalid charges list' )
     ch = [None] * min( _MAX_CHARGES, len(chf) )
     for i, c in enumerate( chf[:_MAX_CHARGES] ):
       if type(c) is not dict:
-        return f'Bad charge #{i+1}'
+        raise CharacterError( f'Bad charge #{i+1}' )
       try:
         ch[i] = {
           'name' : str( c.get('name') )[:_CHG_NAME_MAXLEN],
@@ -694,16 +428,16 @@ class Character:
           'reset' : [],
         }
       except ( ValueError, TypeError ) as e:
-        return f'Bad charge #{i+1}'
+        raise CharacterError( f'Bad charge #{i+1}' )
       if ch[i]['max'] <= 0:
-        return f'Bad charge #{i+1}'
+        raise CharacterError( f'Bad charge #{i+1}' )
       if not ( 0 <= ch[i]['curr'] <= ch[i]['max'] ):
-        return f'Bad charge #{i+1}'
+        raise CharacterError( f'Bad charge #{i+1}' )
       rst = c.get('reset')
       if rst is None:
-        return f'Charge #{i+1} has missing reset'
+        raise CharacterError( f'Charge #{i+1} has missing reset' )
       if type(rst) is not list:
-        return f'Charge #{i+1} has invalid reset'
+        raise CharacterError( f'Charge #{i+1} has invalid reset' )
       for r in rst:
         if r in ( 'lr', 'sr' ):
           ch[i]['reset'].append( r )
@@ -716,9 +450,6 @@ class Character:
       'spells' : sp,
       'charges' : ch,
     })
-    
-    #print( 'load_json():', stats )
-    return ''
   
   # DOES NOT VALIDATE hit dice
   def short_rest(self, hit_dice=0, show=True):
