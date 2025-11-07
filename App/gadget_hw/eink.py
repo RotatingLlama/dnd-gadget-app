@@ -1,6 +1,7 @@
 # Logic to drive Waveshare e-ink displays
 #
-# 06 Oct 2025
+# T. Lloyd
+# 07 Nov 2025
 
 # Standard libraries
 from machine import Pin
@@ -67,8 +68,6 @@ class EInk(FrameBuffer):
     self.unbusy.set()
     self._busy_tsf = asyncio.ThreadSafeFlag()
     self._unbusy_tsf = asyncio.ThreadSafeFlag()
-    #loop = asyncio.get_event_loop()
-    #loop.create_task( self._busy_waiter() )
     self._busy_task = asyncio.create_task( self._busy_waiter() )
     self.Busy.irq( handler=self._isr_busy, trigger=(Pin.IRQ_RISING|Pin.IRQ_FALLING) ) # Triggers when eink stops being busy
     
@@ -103,7 +102,6 @@ class EInk(FrameBuffer):
   # Sets/clears unbusy event
   # Runs as coro
   async def _busy_waiter(self):
-    #print('busy waiter')
     while True:
       await self._busy_tsf.wait()
       self.unbusy.clear()
@@ -115,11 +113,9 @@ class EInk(FrameBuffer):
   # Async waits for unbusy event to fire
   # Then async waits another 200ms
   async def wait_busy(self):
-    #print('wait_busy() starting')
     
     # Make sure _busy_waiter() has time to update the flag before we check it
     if self.unbusy.is_set():
-      #print('wait_busy(): 
       await asyncio.sleep_ms(200)
     
     # Wait for the display to be unbusy
@@ -127,7 +123,6 @@ class EInk(FrameBuffer):
     
     # Wait a little bit more
     await asyncio.sleep_ms(200)
-    #print('wait_busy() done')
   
   # Just polls the Busy pin until it goes high, then waits 200ms
   # Not async, so BLOCKS the whole time
@@ -185,6 +180,7 @@ class EInk(FrameBuffer):
       0x17, # BT_PHC = 00 010 111 : 10ms / S3 / 6.58us
       0x27  # What's this for??
     ]))
+    # Individual commands per byte cycles CS pin, which is recommended by datasheet (p43)
     '''
     self._send_data(0x6F)
     self._send_data(0x1F)
@@ -226,7 +222,6 @@ class EInk(FrameBuffer):
     self._send_data(0x03)
     self._send_data(0x0D)
     '''
-    # Individual commands per byte cycles CS pin, which is recommended by datasheet (p43)
     
     self._send_command(0x61) # TRES - Resolution Setting
     self._send_buffer(bytes([

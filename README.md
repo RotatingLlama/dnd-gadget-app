@@ -49,7 +49,7 @@ For details of the `.pi` format, refer to `libpi.py` (either version).
 
 Savefiles
 ---------
-All of a character's information is stored in its `stats.json` file.
+All of a character's information is stored in their `stats.json` file.
 - The file uses standard JSON format.
 - Supported fields are shown in the example below.
 - Spell slots are stored in order, starting from level 1.
@@ -64,7 +64,6 @@ All of a character's information is stored in its `stats.json` file.
 {
       "name": "Hemlock",
       "title": "L5 Wizard",
-      "level": 5,
       "xp": 9256,
       "copper": 0,
       "silver": 0,
