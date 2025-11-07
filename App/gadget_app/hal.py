@@ -2,10 +2,12 @@
 # Some original code in einktest.py
 #
 # T. Lloyd
-# 25 Sep 2025
+# 07 Nov 2025
 
 from micropython import const
 import asyncio
+from machine import RTC as _RTC
+from time import mktime, gmtime
 #from gc import collect as gc_collect
 
 # Hardware drivers
@@ -28,6 +30,7 @@ class HAL:
     # Refs to hardware features
     self.mtx = Matrix( self.hw.mtx )
     self.needle = Needle( self.hw )
+    self.rtc = RTC()
     self.eink = self.hw.eink
     self.oled = self.hw.oled
     self.sd = self.hw.sd
@@ -308,3 +311,29 @@ class Needle:
       self.hw.set_needle_frequency( _NEEDLE_WOBBLE_SPEED )
     else:
       self.hw.set_needle_frequency()
+
+class RTC(_RTC):
+  
+  def uts(self, ts=None ):
+    if ts is None:
+      return self._getuts()
+    else:
+      self._setuts(ts)
+  
+  def _getuts(self):
+    
+    #  0     1      2    3        4      5        6        7
+    # (year, month, day, weekday, hours, minutes, seconds, subseconds)
+    t = self.datetime()
+    
+    #             ( year, month, mday, hour, minute, second, weekday, yearday)
+    return mktime(( t[0], t[1],  t[2], t[4], t[5],   t[6],   t[3],    0      ))
+  
+  def _setuts(self, ts ):
+    
+    #  0     1      2     3     4       5       6        7
+    # (year, month, mday, hour, minute, second, weekday, yearday)
+    t = gmtime(ts)
+    
+    #             (year, month, day, weekday, hours, minutes, seconds, subseconds)
+    self.datetime(( t[0], t[1], t[2], t[6],   t[3],  t[4],    t[5],    0         ))

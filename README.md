@@ -7,6 +7,8 @@ A necessary feature of many tabletop roleplaying games (TTRPGs) is the requireme
 
 This is where the D&D Gadget comes in.  It doesn't replace a character sheet, it won't tell you the text of your class features and it certainly won't take from you the enjoyment of rolling your clacky math rocks.  What is _does_ aim for however, is to remove the need to ever cross through, rub out or rewrite anything, ever again.  Any quantity that varies through play is captured in this convenient and eye-catching open-source device, for quick reference and easy revision.
 
+This repository is for the firmware that runs on the device (the "app").  The hardware aspects (PCB and enclosure) are not yet ready for publishing.
+
 How to Use
 ----------
 TODO: Complete this section.  Photos, etc.

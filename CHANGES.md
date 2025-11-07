@@ -11,12 +11,11 @@ GENERAL
 - OLED menu and idle screen can draw simultaneously on rare occasions.  Fix this
   - Both SimpleAdjuster.render_title() and _oled_idle_render() call oled.fill(0) before doing anything, so this shouldn't happen
   - Neither of the above functions are coroutines or yield during execution
-  - Unclear how/why this happened.  Get a photo nrext time.
+  - Unclear how/why this happened.  Get a photo next time.
 - Improve the way the matrix animations work.  Viperise?
 * Have a system.json file
   - Determines which character directories to use
-  - Stores 'on-time', and any other non-character-specific data
-    - Used to update RTC for somewhat-meaningful file access times
+  - Perhaps better RTC tracking than current ad-hoc savefiles method
   - Mandatory file part of directory recognition routine
   - Gets saved at power-down
 * Don't show 'sd missing' graphic at boot unless sd is actually missing
@@ -65,6 +64,7 @@ Visible Changes
 ---------------
 * Changed savefiles from custom format to JSON
   - Removed 'level' from savefile as it wasn't being used for anything
+* Now sets internal clock at startup based on most recent savefile time
 
 Invisible Changes
 -----------------

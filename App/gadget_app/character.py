@@ -1,7 +1,7 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 02 Nov 2025
+# 07 Nov 2025
 
 #import asyncio
 import os
@@ -315,15 +315,30 @@ class Character:
   
   def _load(self):
     
-    # Step through the file line by line
+    # File operations
     try:
-      with open( str( self.dir / CHAR_STATS ), 'r' ) as fd:
+      
+      # The stats file
+      f = self.dir / CHAR_STATS
+      
+      # Update the RTC based on the file time (if newer)
+      uts = self.hal.rtc.uts
+      ts = max( f.stat()[7:10] )
+      if ts > uts():
+        uts( ts )
+        print(f'Set RTC based on {self.dir.name}: {ts}')
+      
+      # Load the file
+      with f.open( 'r' ) as fd:
         fs = json.load( fd )
+      
     except OSError as e:
       if e.errno == errno.ENOENT:
         raise CharacterError('Savefile does not exist!')
       else:
         raise CharacterError(f'Could not open save file: {errno.errorcode[e.errno]}')
+    
+    del uts, ts, f, fd
     
     # Step through the expected simple parameters
     for k in PARAMS:
