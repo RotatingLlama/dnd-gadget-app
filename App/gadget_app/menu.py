@@ -2,7 +2,7 @@
 # For OLED and LED Matrix displays
 #
 # T. Lloyd
-# 24 Oct 2025
+# 08 Nov 2025
 
 from .common import DeferredTask
 
@@ -219,11 +219,12 @@ class SimpleAdjuster:
     self.parent = parent
     self.hal = hal
     self.prio = prio
+    self.accel = IncrementAccelerator( self.adj )
     self._ih = (
       self._leave, # back
       self.btn,
-      self.cw,
-      self.ccw
+      lambda: self.accel.adj(1), # cw
+      lambda: self.accel.adj(-1) # ccw
     )
     self.title = title
     self.prompt = f'{title}:' if prompt is None else prompt
@@ -297,47 +298,72 @@ class SimpleAdjuster:
     oled.text( self.title + ': ' + str(self.get()) ,12,12,1)
     oled.show()
   
-  def cw(self):
+  def adj(self, i ):
     
-    if self.dmax is not None:
-      if self.d >= self.dmax:
-        return
+    d = self.d + i
     
-    if self.max is not None:
-      if self.get() + self.d >= self.max:
-        return
-    
-    self.d += 1
-    self._update()
-  
-  def ccw(self):
-    
+    # Clamp d to min and max d
     if self.dmin is not None:
-      if self.d <= self.dmin:
-        return
+      if d < self.dmin:
+        d = self.dmin
+    if self.dmax is not None:
+      if d > self.dmax:
+        d = self.dmax
     
+    # Clamp d to the values that will produce abs min and abs max
     if self.min is not None:
-      if self.get() + self.d <= self.min:
-        return
+      d = max( d, self.min - self.get() )
+    if self.max is not None:
+      d = min( d, self.max - self.get() )
     
-    self.d -= 1
+    # Set
+    self.d = d
     self._update()
+    
+  #def cw(self):
+  #  
+  #  if self.dmax is not None:
+  #    if self.d >= self.dmax:
+  #      return
+  #  
+  #  if self.max is not None:
+  #    if self.get() + self.d >= self.max:
+  #      return
+  #  
+  #  self.d += 1
+  #  self._update()
+  
+  #def ccw(self):
+  #  
+  #  if self.dmin is not None:
+  #    if self.d <= self.dmin:
+  #      return
+  #  
+  #  if self.min is not None:
+  #    if self.get() + self.d <= self.min:
+  ##      return
+  #  
+  #  self.d -= 1
+  #  self._update()
   
   def btn(self):
     
+    # Optionally do nothing if d=0 (az = allow zero)
     if self.d == 0 and not self.az:
       return
     
+    # Make the change
     if self.set_abs is not None:
       self.set_abs( self.get() + self.d )
     if self.set_rel is not None:
       self.set_rel( self.d )
     
-    self.d = 0
+    # Done
     self.exit()
   
   def _leave(self):
     self.d = 0
+    self.accel.reset()
     self.aadj(self.get())
     self.radj(0)
     self._unregister()
@@ -348,11 +374,12 @@ class DoubleAdjuster( SimpleAdjuster ):
     self.parent = parent
     self.hal = hal
     self.prio = prio
+    self.accel = IncrementAccelerator( self.adj )
     self._ih = (
       self._leave, # back
       self.btn,
-      self.cw,
-      self.ccw
+      lambda: self.accel.adj(1), # cw
+      lambda: self.accel.adj(-1), # ccw
     )
     self.title = title
     self.preview = preview
@@ -423,53 +450,65 @@ class DoubleAdjuster( SimpleAdjuster ):
     oled.text( self.title, 12,12, 1)
     oled.show()
   
-  # Checks an adjustment and returns if it'll be OK or not
-  def _chk_adj(self, d ):
+  # Adjust self.d, by increment i (if permissible)
+  def adj(self, i ):
+    
+    # Get the closest permissible d, based on the requested increment
+    d = self._chk_adj( self.d + i )
+    
+    # If it changes anything, make the update
+    if d != self.d:
+      self.d = d
+      self._update()
+  
+  # Checks an adjustment and returns that adjustment if ok, or the closest permissible if not
+  def _chk_adj(self, d:int ) -> int:
     
     #print(f'd:{d}; dmin:{self.dmin()}: dmax:{self.dmax()}')
     
+    # Clamp d to min and max d
     if self.dmin is not None:
       if d < self.dmin():
-        return False
-    
+        d = self.dmin()
     if self.dmax is not None:
       if d > self.dmax():
-        return False
+        d = self.dmax()
     
     p = self.preview( d )
     #print(f'a:{p[0]}; amin:{self.amin}; amax:{self.amax}; b:{p[1]}; bmin:{self.bmin}; bmax:{self.bmax}')
     
+    # If any of these checks fail, just return d=0 because we don't know the mapping
+    
     if self.amax is not None:
       if p[0] > self.amax():
-        return False
+        d = 0
     
     if self.bmax is not None:
       if p[1] > self.bmax():
-        return False
+        d = 0
     
     if self.amin is not None:
       if p[0] < self.amin():
-        return False
+        d = 0
     
     if self.bmin is not None:
       if p[1] < self.bmin():
-        return False
+        d = 0
     
-    return True
+    return d
   
-  def cw(self):
-    if self._chk_adj( self.d + 1 ):
-      self.d += 1
-      self._update()
+  #def cw(self):
+  #  if self._chk_adj( self.d + 1 ):
+  #    self.d += 1
+  #    self._update()
   
-  def ccw(self):
-    if self._chk_adj( self.d - 1 ):
-      self.d -= 1
-      self._update()
+  #def ccw(self):
+  #  if self._chk_adj( self.d - 1 ):
+  #    self.d -= 1
+  #    self._update()
   
   def btn(self):
     self.set( self.d )
-    self.d = 0
     self.exit()
 
 # For confirming single actions
@@ -679,3 +718,54 @@ class MatrixMenu:
     self.r = None
     self.to.untouch()
     self._unregister()
+
+
+class IncrementAccelerator:
+  def __init__(self, cb ):
+    self.cb = cb
+    
+    self._incs = (1,10,100,1000)
+    self._thresh = 40
+    self._lmax = len(self._incs) - 1
+    
+    self.reset()
+  
+  def reset(self):
+    self.direction = 0
+    self.runlength = 0
+    self.currlevel = 0
+  
+  def adj(self,s):
+    
+    # Efficient sign() function
+    # sign = lambda x: x and (-1 if x < 0 else 1)
+    
+    # If we have just changed direction (or just started)
+    if s != self.direction:
+      
+      # Decrease the current level
+      if self.currlevel > 0:
+        self.currlevel -= 1
+      
+      self.direction = s
+      self.runlength = 1
+      
+    else: # Another one in the same direction
+      
+      # Is it time to accelerate?
+      if self.runlength >= self._thresh:
+        
+        # Increase the current level
+        if self.currlevel < self._lmax:
+          self.currlevel += 1
+        
+        self.runlength = 1
+        
+      else: # Not time yet
+        
+        self.runlength += 1
+        #print(self.runlength)
+    
+    # Call the handler
+    #print( self._incs[ self.currlevel ] * s )
+    self.cb( self._incs[ self.currlevel ] * s )

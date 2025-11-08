@@ -2,7 +2,7 @@
 # For Micropython v1.26
 #
 # T. Lloyd
-# 02 Nov 2025
+# 08 Nov 2025
 
 
 # TO USE:
@@ -402,10 +402,6 @@ class Gadget:
         adj_rel = lambda d : char.show_hp( char.stats['hp'][0] + char.stats['hp'][2] + d ),
         min_d=None,
         max_d=lambda: 0,
-        min_a=None,
-        min_b=lambda: 0,
-        max_a=lambda: char.stats['hp'][1],
-        max_b=lambda: char.stats['hp'][2]
       )
     )
     omi.append(

@@ -33,6 +33,12 @@ GENERAL
   - Read spec for MONO_VLSB [https://docs.micropython.org/en/latest/library/framebuf.html#framebuf.framebuf.MONO_VLSB]
   - Pixel arrangement for oled is *madness*.  Oled gfx assets are small, just img.load() them and use native fb.blit()
   - Maybe instead, just have a 'scratch' framebuffer that's used for all off-screen manipulation, to avoid ad-hoc memory allocation
+- menu.py fast scrolling should trigger on more predictable intervals
+  - eg. 40, 400, 4000 etc.
+  - Instead of after n rotations, leading to 40, 440, 4440, etc.
+  - Move some logic out of SimpleAdjuster and DoubleAdjuster, have the IncrementAccelerator know the entire adjustment value (instead of just one rotation at a time)
+  - Just verify/clamp the total adjustment that IncrementAccelerator presents
+  - Feedback to IncrementAccelerator if it's being clamped?
 
 
 img
@@ -48,10 +54,6 @@ character.py
 - Implement die()
 - Truncate charge item quantity at load-in, not at led matrix geometry calculation: max charges = 16 - n_spells
 
-menu.py
--------
-* Option to scroll faster when adjusting a large number
-
 
 Gadget v0.4 - WIP
 =================
@@ -64,6 +66,7 @@ Visible Changes
 ---------------
 * Changed savefiles from custom format to JSON
   - Removed 'level' from savefile as it wasn't being used for anything
+* When entering large numbers through the dial, increments now accelerate dynamically to speed up the process
 * Now sets internal clock at startup based on most recent savefile time
 
 Invisible Changes
