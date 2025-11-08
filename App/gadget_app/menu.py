@@ -245,7 +245,7 @@ class SimpleAdjuster:
       self.radj = lambda x: True
     else:
       self.radj = adj_rel
-    if set_abs is None and set_rel is None:
+    if ( not callable(set_abs) ) and ( not callable(set_rel) ):
       raise RuntimeError('At least one of set_abs or set_rel must be callable')
     self._cr = None
   
@@ -319,32 +319,6 @@ class SimpleAdjuster:
     # Set
     self.d = d
     self._update()
-    
-  #def cw(self):
-  #  
-  #  if self.dmax is not None:
-  #    if self.d >= self.dmax:
-  #      return
-  #  
-  #  if self.max is not None:
-  #    if self.get() + self.d >= self.max:
-  #      return
-  #  
-  #  self.d += 1
-  #  self._update()
-  
-  #def ccw(self):
-  #  
-  #  if self.dmin is not None:
-  #    if self.d <= self.dmin:
-  #      return
-  #  
-  #  if self.min is not None:
-  #    if self.get() + self.d <= self.min:
-  ##      return
-  #  
-  #  self.d -= 1
-  #  self._update()
   
   def btn(self):
     
@@ -464,8 +438,6 @@ class DoubleAdjuster( SimpleAdjuster ):
   # Checks an adjustment and returns that adjustment if ok, or the closest permissible if not
   def _chk_adj(self, d:int ) -> int:
     
-    #print(f'd:{d}; dmin:{self.dmin()}: dmax:{self.dmax()}')
-    
     # Clamp d to min and max d
     if self.dmin is not None:
       if d < self.dmin():
@@ -474,8 +446,8 @@ class DoubleAdjuster( SimpleAdjuster ):
       if d > self.dmax():
         d = self.dmax()
     
+    # Get a preview of what a and b would do if we set this d
     p = self.preview( d )
-    #print(f'a:{p[0]}; amin:{self.amin}; amax:{self.amax}; b:{p[1]}; bmin:{self.bmin}; bmax:{self.bmax}')
     
     # If any of these checks fail, just return d=0 because we don't know the mapping
     
@@ -496,16 +468,6 @@ class DoubleAdjuster( SimpleAdjuster ):
         d = 0
     
     return d
-  
-  #def cw(self):
-  #  if self._chk_adj( self.d + 1 ):
-  #    self.d += 1
-  #    self._update()
-  
-  #def ccw(self):
-  #  if self._chk_adj( self.d - 1 ):
-  #    self.d -= 1
-  #    self._update()
   
   def btn(self):
     self.set( self.d )
@@ -735,6 +697,8 @@ class IncrementAccelerator:
     self.runlength = 0
     self.currlevel = 0
   
+  # Takes -1 or +1 for the direction of adjustment.
+  # Calls self.cb() with the amount of increment to move
   def adj(self,s):
     
     # Efficient sign() function
@@ -764,8 +728,6 @@ class IncrementAccelerator:
       else: # Not time yet
         
         self.runlength += 1
-        #print(self.runlength)
     
     # Call the handler
-    #print( self._incs[ self.currlevel ] * s )
     self.cb( self._incs[ self.currlevel ] * s )

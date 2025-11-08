@@ -22,9 +22,17 @@ GENERAL
 * Hierarchical menus
   - Add a menu item to view errors that have been caught and logged
   - Add a menu item to take a screenshot
+* Combine 'charges' and other counters (gold, xp etc.)
+  - 'reset' property is optional
+  - 'max' property is optional
+  - Assume zero minimum
+  - Can appear on matrix if 'max' is present, and 6 or less
+  - Eligible items appear on matrix on first-come-first-served basis.  Overflow goes into:
+  - New 'character' menu on oled, after Damage/Heal
+    - Contains overflow from matrix and anything ineligible for matrix
+    - Order of appearance is order in savefile
 - Way to skip character select screen and just go to last played
 - spell slots can reset on short rest for some classes
-- Have a "things" class, remove the items/spells distinction?
 - get rid of asserts, everywhere - replace with valueerror or something, at least
 - Proper error handling
 - Make render_sd_error() in gfx.py use blit_onto instead of load()
@@ -39,6 +47,10 @@ GENERAL
   - Move some logic out of SimpleAdjuster and DoubleAdjuster, have the IncrementAccelerator know the entire adjustment value (instead of just one rotation at a time)
   - Just verify/clamp the total adjustment that IncrementAccelerator presents
   - Feedback to IncrementAccelerator if it's being clamped?
+  - Would help to give IA a min/mac d tuple:
+    - Tuple would need to be dynamically generated (eg. max hp varies with temp hp)
+    - But tuple can be requested as soon as IA goes out of 'reset' state
+    - Safe to assume it won't change during the adjustment (just maybe as a consequence of it)
 
 
 img
