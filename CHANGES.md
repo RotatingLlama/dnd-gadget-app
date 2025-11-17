@@ -1,27 +1,15 @@
 TODO
 ====
-
-GENERAL
--------
-- How to handle things that reset at 'dawn', or that don't regain all charges on reset (eg. Armour of Magical Strength)
 * Saving
   * Emergency save can save to internal flash if sd unavailable.  Save out to sd when it comes back.
   * Allow continued play and just save internally if sd goes away.
   * Save out to SD when it comes back (if the folder's there) and just carry on
-- OLED menu and idle screen can draw simultaneously on rare occasions.  Fix this
-  - Both SimpleAdjuster.render_title() and _oled_idle_render() call oled.fill(0) before doing anything, so this shouldn't happen
-  - Neither of the above functions are coroutines or yield during execution
-  - Unclear how/why this happened.  Get a photo next time.
-- Improve the way the matrix animations work.  Viperise?
-* Have a system.json file
-  - Determines which character directories to use
-  - Perhaps better RTC tracking than current ad-hoc savefiles method
-  - Mandatory file part of directory recognition routine
-  - Gets saved at power-down
 * Don't show 'sd missing' graphic at boot unless sd is actually missing
 * Hierarchical menus
   - Add a menu item to view errors that have been caught and logged
   - Add a menu item to take a screenshot
+* How to handle things that reset at 'dawn', or that don't regain all charges on reset (eg. Armour of Magical Strength)
+  - This will need another menu entry.  Wait to implement after heirarchical menus are added.
 * Combine 'charges' and other counters (gold, xp etc.)
   - 'reset' property is optional
   - 'max' property is optional
@@ -31,16 +19,16 @@ GENERAL
   - New 'character' menu on oled, after Damage/Heal
     - Contains overflow from matrix and anything ineligible for matrix
     - Order of appearance is order in savefile
+  - Rationalise character load-in and matrix geometry calculation:
+    - Both of these have opinions about how many charges are permissible
+    - These opinions should always match, or better yet come from the same source
+* Fonts
+  - https://github.com/peterhinch/micropython-font-to-py
+  - https://github.com/easytarget/microPyEZfonts
+  - Honorable mention https://github.com/nickpmulder/ssd1306big/blob/main/ssd1306big.py
+- Improve the way the matrix animations work.  Viperise?
 - Way to skip character select screen and just go to last played
 - spell slots can reset on short rest for some classes
-- get rid of asserts, everywhere - replace with valueerror or something, at least
-- Proper error handling
-- Make render_sd_error() in gfx.py use blit_onto instead of load()
-  - Handle 2bpp onto 1bpp (to handle b&w with transparency)
-  - Define transparency colour in _blit_onto() - needed at least to construct p_bline
-  - Read spec for MONO_VLSB [https://docs.micropython.org/en/latest/library/framebuf.html#framebuf.framebuf.MONO_VLSB]
-  - Pixel arrangement for oled is *madness*.  Oled gfx assets are small, just img.load() them and use native fb.blit()
-  - Maybe instead, just have a 'scratch' framebuffer that's used for all off-screen manipulation, to avoid ad-hoc memory allocation
 - menu.py fast scrolling should trigger on more predictable intervals
   - eg. 40, 400, 4000 etc.
   - Instead of after n rotations, leading to 40, 440, 4440, etc.
@@ -51,20 +39,27 @@ GENERAL
     - Tuple would need to be dynamically generated (eg. max hp varies with temp hp)
     - But tuple can be requested as soon as IA goes out of 'reset' state
     - Safe to assume it won't change during the adjustment (just maybe as a consequence of it)
-
-
-img
----
-* Fonts - review 1.26 capabilities
-  - https://github.com/micropython/micropython/releases/tag/v1.26.0#:~:text=which%20helps%20when%20implementing%20custom%20fonts
+- OLED menu and idle screen can draw simultaneously on rare occasions.  Fix this
+  - Both SimpleAdjuster.render_title() and _oled_idle_render() call oled.fill(0) before doing anything, so this shouldn't happen
+  - Neither of the above functions are coroutines or yield during execution
+  - Unclear how/why this happened.  Get a photo next time.
+- Have a system.json file
+  - Determines which character directories to use
+  - Perhaps better RTC tracking than current ad-hoc savefiles method
+  - Mandatory file part of directory recognition routine
+  - Gets saved at power-down
+- get rid of asserts, everywhere - replace with valueerror or something, at least
+- Proper error handling
+- Make render_sd_error() in gfx.py use blit_onto instead of load()
+  - Handle 2bpp onto 1bpp (to handle b&w with transparency)
+  - Define transparency colour in _blit_onto() - needed at least to construct p_bline
+  - Read spec for MONO_VLSB [https://docs.micropython.org/en/latest/library/framebuf.html#framebuf.framebuf.MONO_VLSB]
+  - Pixel arrangement for oled is *madness*.  Oled gfx assets are small, just img.load() them and use native fb.blit()
+  - Maybe instead, just have a 'scratch' framebuffer that's used for all off-screen manipulation, to avoid ad-hoc memory allocation
+- Implement die()
 - Support PNG???
   - https://github.com/remixer-dec/mpy-img-decoder/tree/master
   - Also https://github.com/Scondo/purepng
-
-character.py
-------------
-- Implement die()
-- Truncate charge item quantity at load-in, not at led matrix geometry calculation: max charges = 16 - n_spells
 
 
 Gadget v0.4 - WIP
