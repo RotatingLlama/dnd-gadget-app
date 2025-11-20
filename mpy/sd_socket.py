@@ -158,4 +158,7 @@ class SD_Socket:
     self._lvt = ticks_ms()
     
     # Get out of this ISR
+    # By the time this ISR runs, the switch may have already bounced - so we can't check its state here
+    # Also MP (1.26) doesn't reveal which event (rising|falling) triggered the ISR
     schedule(self._plug_ref, 0 ) # Ref to self._plug()
+  
