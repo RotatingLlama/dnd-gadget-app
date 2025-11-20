@@ -107,6 +107,14 @@ class Gadget:
     
     # Draw a startup logo (hides spurious sd errors)
     if self._starting:
+      
+      # Randomise which version of the logo we get
+      if time.ticks_cpu() & 1:
+        # Shaded version
+        gfx.render_boot_logo(oled)
+        return
+      
+      # Lineart version
       h( 8,5, 65, 1 )
       v( 72,5, 11, 1 )
       h( 72,16, 48, 1 )

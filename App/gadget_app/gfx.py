@@ -1,7 +1,7 @@
 # Drawing functions
 #
 # T. Lloyd
-# 29 Oct 2025
+# 20 Nov 2025
 
 # Standard libraries
 import micropython
@@ -18,6 +18,7 @@ import img
 from .common import CHAR_HEAD, CHAR_BG
 
 # ASSETS
+_IMG_LOGO_OLED= const('/assets/oledlogo.pi')
 _IMG_CHOOSE_W = const('/assets/choose_w.2ink')
 _IMG_CHOOSE_R = const('/assets/choose_r.2ink')
 _IMG_SKULL    = const('/assets/skull.pi')
@@ -703,6 +704,11 @@ def draw_char_select( fb, chars ):
 def draw_dead_batt(fb):
   img.load_into( fb.buf, _IMG_DEADBATT )
 
+def render_boot_logo(oled):
+    fb = img.load( _IMG_LOGO_OLED )
+    oled.blit(fb,0,0)
+    oled.show()
+    
 # Render the SD error screen on the oled, with some text.
 def render_sd_error( e:int, oled ):
     
