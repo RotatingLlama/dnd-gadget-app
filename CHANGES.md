@@ -4,7 +4,6 @@ TODO
   * Emergency save can save to internal flash if sd unavailable.  Save out to sd when it comes back.
   * Allow continued play and just save internally if sd goes away.
   * Save out to SD when it comes back (if the folder's there) and just carry on
-* Don't show 'sd missing' graphic at boot unless sd is actually missing
 * Hierarchical menus
   - Add a menu item to view errors that have been caught and logged
   - Add a menu item to take a screenshot
@@ -74,11 +73,11 @@ Visible Changes
 * Changed savefiles from custom format to JSON
   - Removed 'level' from savefile as it wasn't being used for anything
 * When entering large numbers through the dial, increments now accelerate dynamically to speed up the process
-* Now sets internal clock at startup based on most recent savefile time
+* Added bootup logo on oled, to hide spurious SD card errors that get shown while system is booting
 
 Invisible Changes
 -----------------
-* Nothing yet
+* Now sets internal clock at startup based on most recent savefile time
 
 
 Gadget v0.3 - 01 Nov 2025

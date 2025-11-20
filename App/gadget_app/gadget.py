@@ -2,7 +2,7 @@
 # For Micropython v1.26
 #
 # T. Lloyd
-# 08 Nov 2025
+# 20 Nov 2025
 
 
 # TO USE:
@@ -48,6 +48,9 @@ _MTX_TIMEOUT = const(3000)
 # How long we expect the eink to take to blank out
 _EINK_BLANK_MS = const(15700)
 
+# How long to ignore SD errors for, after initial startup
+_STARTUP_TIMEOUT_MS = const(300)
+
 # Store this figure for future use
 _MEM_TOTAL = gc.mem_alloc() + gc.mem_free()
 
@@ -69,6 +72,7 @@ class Gadget:
     self.character = None
     self._sd_mounted = asyncio.Event()
     self._sd_err = 1 # Start off with 'card not present' until we determine otherwise (gfx.py: _SD_ERRORS)
+    self._starting = True
     
     # Event triggers
     self._shutdown = asyncio.ThreadSafeFlag()
@@ -101,6 +105,18 @@ class Gadget:
     
     oled.fill(0)
     
+    # Draw a startup logo (hides spurious sd errors)
+    if self._starting:
+      h( 8,5, 65, 1 )
+      v( 72,5, 11, 1 )
+      h( 72,16, 48, 1 )
+      v( 119,16, 11, 1 )
+      h( 119,26, -65, 1 )
+      v( 55,26, -11, 1 )
+      h( 55,15, -48, 1 )
+      v( 8,15, -11, 1 )
+      oled.show()
+      return
     
     ### SD PROBLEMS ###
     #
@@ -553,7 +569,7 @@ class Gadget:
   # Start everything, keep refs to looping tasks
   async def start_app(self):
     
-    # Indicate progress through the medium of shading
+    # Indicate progress, through the medium of shading
     self.show_shade(2,0)
     
     # Battery protection
@@ -563,6 +579,7 @@ class Gadget:
       #self._battery_charge_waiter(),
       self._battery_low_waiter(),
       self.wait_ani(),
+      self._startup_timeout(),
     ))
     
     # Oled idle stuff
@@ -589,6 +606,11 @@ class Gadget:
     
     await self._exit_loop.wait()
     print('Exiting.  Adios!')
+  
+  # Waits a short period, then sets _starting to False
+  async def _startup_timeout(self):
+    await asyncio.sleep_ms(_STARTUP_TIMEOUT_MS)
+    self._starting = False
   
   # Handles mounting/unmounting the SD card in response to un/plug events from the driver.
   # Sets/clears the _sd_mounted event.
