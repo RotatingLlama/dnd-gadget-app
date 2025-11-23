@@ -2,7 +2,7 @@
 # For Micropython v1.26
 #
 # T. Lloyd
-# 20 Nov 2025
+# 23 Nov 2025
 
 
 # TO USE:
@@ -23,10 +23,10 @@ import micropython
 import time
 
 # Other libraries
-from . import pathlib
+from .pathlib import Path
 
 # Our stuff
-from .common import CHAR_STATS, SD_ROOT, SD_DIR, CHAR_SUBDIR, CHAR_HEAD, HAL_PRIORITY_MENU, HAL_PRIORITY_IDLE, HAL_PRIORITY_SHUTDOWN
+from .common import CHAR_STATS, SD_ROOT, SD_DIR, CHAR_SUBDIR, CHAR_HEAD, INTERNAL_SAVEDIR, HAL_PRIORITY_MENU, HAL_PRIORITY_IDLE, HAL_PRIORITY_SHUTDOWN
 from . import menu
 from .hal import HAL
 from .character import Character, CharacterError
@@ -57,6 +57,9 @@ _MEM_TOTAL = gc.mem_alloc() + gc.mem_free()
 # Used for memory history graph on idle screen
 memlog = bytearray(33) # 32-long ring buffer, plus pointer
 
+# Make this object here because it's used in a few places
+INTERNAL_SAVEDIR = Path(INTERNAL_SAVEDIR)
+
 class Gadget:
   
   def __init__(self, x=None ):
@@ -67,10 +70,11 @@ class Gadget:
     self.hal = HAL()
     
     # Things we want to keep track of
-    self.file_root = pathlib.Path( SD_ROOT ) / SD_DIR
+    self.file_root = Path( SD_ROOT ) / SD_DIR
     self.menu = None
     self.character = None
-    self._sd_mounted = asyncio.Event()
+    self.sd_ok = asyncio.Event()
+    self.sd_gone = asyncio.Event()
     self._sd_err = 1 # Start off with 'card not present' until we determine otherwise (gfx.py: _SD_ERRORS)
     self._starting = True
     
@@ -82,6 +86,13 @@ class Gadget:
     
     # Cleans up whatever we're currently doing, ready to do the next thing
     self.cleanup = lambda : None
+    
+    # Functions to call when the SD is un/plugged
+    self.sd_plug = lambda : None
+    self.sd_unplug = lambda : None
+    
+    # Make sure this exists
+    INTERNAL_SAVEDIR.mkdir(parents=True, exist_ok=True)
   
   # Regularly updates the oled with idle stuff
   async def _oled_runner(self,cr):
@@ -245,11 +256,17 @@ class Gadget:
   # Looks at the directory and generates a list of available Character objects
   def _find_chars(self):
     
-    # List of directories to investigate
+    # Directory of character directories
     cd = self.file_root / CHAR_SUBDIR
+    
+    # If the character dir doesn't exist, use the internal savedir instead
+    if not cd.is_dir():
+      cd = INTERNAL_SAVEDIR
+    
     print( f'Looking for character directories in {str(cd)} ...' )
     # No iterdir() in pathlib.py from [https://github.com/micropython/micropython-lib/blob/master/python-stdlib/pathlib/pathlib.py]
     dirs = sorted( cd.glob('*'), key=lambda p: str(p) )
+      
     del cd
     
     chars = []
@@ -274,7 +291,7 @@ class Gadget:
       try:
         c = Character(
           hal = self.hal,
-          sd_mounted = self._sd_mounted.is_set,
+          sd_mounted = self.sd_ok.is_set,
           chardir = x
         )
       except CharacterError as e:
@@ -309,19 +326,38 @@ class Gadget:
       back = lambda x: self.power_off() # lambda x: self.hal.needle.wobble() # self.hal.hw.empty_battery.set()
     )
     
+    # If the SD card is unplugged, wiggle the needle to indicate
+    # self._set_char() will exit silently if it's triggered with no SD card in place
+    def unplug():
+      self.hal.needle.wobble(True)
+    
+    # If the SD card is replugged
+    # Clean up this character picker instance and then start a new one
+    # (because the newly-plugged card may well have different char data)
+    def plug():
+      self.hal.needle.wobble(False)
+      self.cleanup()
+      self._select_character()
+    
+    # Function to clean up this character picker instance
     def end():
       self.menu.destroy()
       self.play_wait_ani.clear()
       self.cleanup = lambda : None
+      self.sd_plug = lambda : None
+      self.sd_unplug = lambda : None
     
+    # Set these hooks
     self.cleanup = end
+    self.sd_plug = plug
+    self.sd_unplug = unplug
   
   # Gets called when a character is chosen
   # Gets given the selected character object
   def _set_char(self, char ):
     
     # Ignore call if the SD card has gone away
-    if not self._sd_mounted.is_set():
+    if not self.sd_ok.is_set():
       return
     
     # Clean up the char select screen
@@ -553,7 +589,13 @@ class Gadget:
       btn = om.next_item
     )
     
-    # Tidies up things that were set by _playscreen() and does an emergency save, if needed
+    #def plug():
+    #  pass
+    #
+    #def unplug():
+    #  pass
+    
+    # Tidies up things that were set by _playscreen() and triggers a save, if needed
     def end():
       
       # Tidy up UI elements
@@ -562,7 +604,7 @@ class Gadget:
       
       # Make sure everything is saved
       if self.character.is_dirty():
-        self.character.emergency_save( SD_ROOT )
+        self.character.save_now( SD_ROOT )
       
       # Wipe the character object
       self.character = None
@@ -573,6 +615,8 @@ class Gadget:
     # Assign
     self.menu = rm
     self.cleanup = end
+    #self.sd_plug = plug
+    #self.sd_unplug = unplug
   
   # Start everything, keep refs to looping tasks
   async def start_app(self):
@@ -580,12 +624,13 @@ class Gadget:
     # Indicate progress, through the medium of shading
     self.show_shade(2,0)
     
-    # Battery protection
+    # async tasks
     tasks = asyncio.create_task(asyncio.gather(
       self._shutdown_batt(),
       self._shutdown_clean(),
       #self._battery_charge_waiter(),
       self._battery_low_waiter(),
+      self._sd_controller(),
       self.wait_ani(),
       self._startup_timeout(),
     ))
@@ -599,11 +644,8 @@ class Gadget:
     )
     oled_idle = asyncio.create_task( self._oled_runner(oledcr) )
     
-    # Set up the SD manager and wait for the card to be ready
-    sd = asyncio.create_task( self._wait_mount_sd() )
-    
     # Wait for the SD to be ready before continuing...
-    await self._sd_mounted.wait()
+    await self.sd_ok.wait()
     
     self.show_shade(2,1)
     
@@ -621,8 +663,8 @@ class Gadget:
     self._starting = False
   
   # Handles mounting/unmounting the SD card in response to un/plug events from the driver.
-  # Sets/clears the _sd_mounted event.
-  async def _wait_mount_sd(self):
+  # Sets/clears the sd_ok and sd_gone events.
+  async def _sd_controller(self):
     while True:
       
       # Do we need to wait for the SD card?
@@ -634,7 +676,9 @@ class Gadget:
       # Try to mount the SD card
       self._sd_err = self._try_mount_sd()
       if self._sd_err == 0:
-        self._sd_mounted.set()
+        self.sd_gone.clear()
+        self.sd_ok.set()
+        self.sd_plug()
       
       # Wait for the card to be unplugged
       await self.hal.sd.card_absent.wait()
@@ -643,11 +687,13 @@ class Gadget:
       if self._sd_is_mounted():
         vfs.umount( SD_ROOT )
       
-      # Clear this flag
-      self._sd_mounted.clear()
+      # Flags, hooks
+      self.sd_ok.clear()
+      self.sd_gone.set()
+      self.sd_unplug()
   
   # Attempt to mount the SD.  Does all checks and returns result.
-  # Attempts emergency save, if necessary
+  # Attempts to move internal saves out to SD, if applicable
   # 0 = Success
   # Ref _SD_ERRORS (in gfx.py) for other codes
   def _try_mount_sd(self) -> int:
@@ -664,14 +710,11 @@ class Gadget:
     # Ensure our root directory exists
     #self.file_root.mkdir(parents=True, exist_ok=True)
     
-    # If have a character object, and it has pending saves, try now to do them
-    ok = True
-    if self.character is not None:
-      if self.character.is_dirty():
-        ok = self.character.emergency_save( SD_ROOT )
-    #
-    # If we failed an emergency save, there's probably something wrong with the card
-    if not ok:
+    # Try to move any internal saves out to the SD
+    try:
+      self._move_intern_to_sd()
+    except ( RuntimeError, OSError ) as e:
+      # If we failed to move, there's probably something wrong with the card
       return 3 # Could not mount SD
     
     # Check everything looks ok
@@ -681,6 +724,71 @@ class Gadget:
     
     print('Mounted SD card on',SD_ROOT)
     return 0
+  
+  # Move all internal save data onto the SD card (assumes valid, mounted SD card)
+  def _move_intern_to_sd(self):
+    
+    # Target directory on the SD
+    char_dir = self.file_root / CHAR_SUBDIR
+    
+    # Sanity
+    if not char_dir.is_dir():
+      raise RuntimeError('Character directory on SD card does not exist!')
+    
+    # Should be either zero or one of these source directories
+    # No iterdir() in pathlib.py from [https://github.com/micropython/micropython-lib/blob/master/python-stdlib/pathlib/pathlib.py]
+    for src_d in INTERNAL_SAVEDIR.glob('*'):
+      
+      # Find a directory on the SD that doesn't already exist
+      i = 1
+      dest_d = src_d.name
+      while ( char_dir / dest_d ).exists():
+        dest_d = f'{src_d.name}_{i}'
+        i += 1
+      dest_d = ( char_dir / dest_d )
+      dest_d.mkdir()
+      
+      # Move all files from internal dir to new sd dir
+      src_files = src_d.glob('*')
+      for src_f in src_files:
+        
+        # Check that the source file really is a file
+        if not src_f.is_file():
+          continue
+        
+        # Copy the file
+        dest_f = ( dest_d / src_f.name )
+        with src_f.open('rb') as fd:
+          buf = fd.read()
+        with dest_f.open('wb') as fd:
+          fd.write(buf)
+        del buf
+        
+        # Check that they're the same size
+        if src_f.stat()[6] != dest_f.stat()[6]:
+          raise RuntimeError('Could not copy file from internal memory to SD')
+        
+        # Delete the source file (this is a move, not a copy)
+        src_f.unlink()
+      
+      # If we have a current character, 
+      if self.character is not None:
+        
+        # and we've just moved its directory
+        if self.character.dir == src_d:
+          
+          # Update its directory
+          self.character.dir = dest_d
+          
+          # Force it to save out
+          self.character.save_now()
+          
+          # Character.save_now() will change the directory back if it hits problems
+          if self.character.dir != dest_d:
+            raise RuntimeError('Error moving current character out to SD card!')
+      
+      # Delete internal dir
+      src_d.rmdir()
   
   # Check if the SD filesystem is OK
   # 0 = OK

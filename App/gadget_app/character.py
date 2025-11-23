@@ -1,7 +1,7 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 07 Nov 2025
+# 23 Nov 2025
 
 #import asyncio
 import os
@@ -13,7 +13,7 @@ import errno
 #import gc
 
 from . import gfx
-from .common import DeferredTask, CHAR_STATS
+from .common import DeferredTask, CHAR_STATS, INTERNAL_SAVEDIR
 
 # When loading from file, load no more than this many of each item
 _MAX_SPELLS = const(9)
@@ -198,7 +198,7 @@ class Character:
     # self.is_saving() indicates if we are waiting to do a deferred save
     # self._dirty indicates whether we have unsaved data
     
-    self._saver = DeferredTask( timeout=_SAVE_TIMEOUT, callback=self._save_now )
+    self._saver = DeferredTask( timeout=_SAVE_TIMEOUT, callback=self.save_now )
     self.is_saving = self._saver.is_dirty
     self._dirty = False
     
@@ -234,13 +234,12 @@ class Character:
     
     return True
   
-  def _save_now(self) -> bool:
+  def save_now(self) -> bool:
     
-    # If the directory is missing, abandon saving attempt
-    # Dirty flag will remain
-    # Need some other trigger (eg. SD card replug) to retry saving
+    # If the proper directory is missing, switch to the internal directory
     if not self.dir.is_dir():
-      return False
+      self.dir = Path(INTERNAL_SAVEDIR) / self.dir.name
+      self.dir.mkdir(parents=True, exist_ok=True)
     
     # The file path to save to, as a string
     f = str( self.dir / CHAR_STATS )
@@ -265,13 +264,13 @@ class Character:
     print('Saved.')
     return True
   
-  # Try and save, anywhere, now.
+  # DEPRECATED: Use save_now() instead.   Try and save, anywhere, now.
   def emergency_save(self, dir ) -> bool:
-    
+    raise NotImplementedError()
     # If our old directory exists, try to do a normal save
     ok = self.dir.is_dir()
     if ok:
-      ok = self._save_now()
+      ok = self.save_now()
     
     # If that worked, we're done
     if ok:

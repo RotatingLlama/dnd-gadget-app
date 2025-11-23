@@ -1,9 +1,7 @@
 TODO
 ====
 * Saving
-  * Emergency save can save to internal flash if sd unavailable.  Save out to sd when it comes back.
-  * Allow continued play and just save internally if sd goes away.
-  * Save out to SD when it comes back (if the folder's there) and just carry on
+  * If no SD card on bootup, check internal memory to see if we have anything saved there
 * Hierarchical menus
   - Add a menu item to view errors that have been caught and logged
   - Add a menu item to take a screenshot
@@ -72,6 +70,10 @@ Visible Changes
 ---------------
 * Changed savefiles from custom format to JSON
   - Removed 'level' from savefile as it wasn't being used for anything
+* If SD is removed during gameplay, saves will seamlessly switch to internal storage instead
+  - Next time a validly-formatted SD card appears, the internal save will get moved to it automatically
+  - If a character file already exists on the SD with the same name, the file being moved will be automatically renamed to prevent overwriting.
+  - Both versions of the character will now be available for selection
 * When entering large numbers through the dial, increments now accelerate dynamically to speed up the process
 * Added bootup logo on oled, to hide spurious SD card errors that get shown while system is booting
 

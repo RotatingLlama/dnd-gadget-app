@@ -1,7 +1,7 @@
 # Misc common data and code
 #
 # T. Lloyd
-# 02 Nov 2025
+# 23 Nov 2025
 
 from micropython import const
 import asyncio
@@ -11,6 +11,9 @@ import time
 HAL_PRIORITY_IDLE = const(1)
 HAL_PRIORITY_MENU = const(10)
 HAL_PRIORITY_SHUTDOWN = const(100)
+
+# Where in internal storage to keep temporary saves
+INTERNAL_SAVEDIR = const('/saves')
 
 # SD directory structure
 SD_ROOT = const('/sd')
