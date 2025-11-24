@@ -3,7 +3,7 @@
 # Sets up SD card automatically when plugged
 #
 # T. Lloyd
-# 24 Oct 2025
+# 24 Nov 2025
 
 import asyncio
 from time import ticks_ms, ticks_diff
@@ -38,6 +38,7 @@ class SD_Socket:
       card_absent - asyncio Event that fires when the card is ejected
       card_present - asyncio Event that fires when the card is inserted
       card_ready - asyncio Event that fires when the card is initialised and ready to use
+      card_state_known - asyncio Event that fires as soon as a plug/unplug event resolves to a known condition (ok or ng)
   '''
   
   def __init__( self, spi, cs, det, baudrate=1320000 ):
@@ -50,6 +51,7 @@ class SD_Socket:
     
     # Card state tracking
     self._plug_event_tsf = asyncio.ThreadSafeFlag()
+    self.card_state_known = asyncio.Event()
     self.card_absent = asyncio.Event()
     self.card_present = asyncio.Event()
     self.card_ready = asyncio.Event()
@@ -82,6 +84,7 @@ class SD_Socket:
     while True:
       await self._plug_event_tsf.wait()
       self._plug_event_tsf.clear()
+      self.card_state_known.clear()
       
       # Wait the debounce time before reading the switch
       # (We get triggered on the very first transition, and may still be bouncing)
@@ -97,6 +100,7 @@ class SD_Socket:
         self.card_present.clear()
         self.card_ready.clear()
         self.card_absent.set()
+        self.card_state_known.set()
   
   # Reacts to card_present and card_absent events, set by _plug_waiter()
   # Sets the card_ready event.
@@ -124,7 +128,10 @@ class SD_Socket:
         # Wait a little while before trying again
         await asyncio.sleep_ms( _INIT_RETRY_TIME )
       
-      # Did it work?
+      # At this point, either it's inited successfully or we've given up on it
+      self.card_state_known.set()
+      
+      # Did it init successfully?
       if self.card is None:
         print(f'SD present but faulty, giving up after {_INIT_TRIES} tries :(')
       

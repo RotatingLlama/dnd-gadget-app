@@ -1,7 +1,7 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 23 Nov 2025
+# 24 Nov 2025
 
 #import asyncio
 import os
@@ -240,6 +240,7 @@ class Character:
     if not self.dir.is_dir():
       self.dir = Path(INTERNAL_SAVEDIR) / self.dir.name
       self.dir.mkdir(parents=True, exist_ok=True)
+      print(f'Moved save location to internal because SD went bad')
     
     # The file path to save to, as a string
     f = str( self.dir / CHAR_STATS )

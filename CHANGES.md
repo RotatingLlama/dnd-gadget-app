@@ -1,7 +1,7 @@
 TODO
 ====
-* Saving
-  * If no SD card on bootup, check internal memory to see if we have anything saved there
+* TEST PROPERLY the internal save features
+- If empty char select screen, do random wandering needle
 * Hierarchical menus
   - Add a menu item to view errors that have been caught and logged
   - Add a menu item to take a screenshot
@@ -36,6 +36,7 @@ TODO
     - Tuple would need to be dynamically generated (eg. max hp varies with temp hp)
     - But tuple can be requested as soon as IA goes out of 'reset' state
     - Safe to assume it won't change during the adjustment (just maybe as a consequence of it)
+- Why does SD plug/unplug sometimes trigger (clean) shutdown?
 - OLED menu and idle screen can draw simultaneously on rare occasions.  Fix this
   - Both SimpleAdjuster.render_title() and _oled_idle_render() call oled.fill(0) before doing anything, so this shouldn't happen
   - Neither of the above functions are coroutines or yield during execution

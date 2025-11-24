@@ -2,7 +2,7 @@
 # For Micropython v1.26
 #
 # T. Lloyd
-# 23 Nov 2025
+# 24 Nov 2025
 
 
 # TO USE:
@@ -75,8 +75,9 @@ class Gadget:
     self.character = None
     self.sd_ok = asyncio.Event()
     self.sd_gone = asyncio.Event()
+    self._sd_mount_attempted = asyncio.Event() # Fires after attempting to mount a present SD, regardless of success
     self._sd_err = 1 # Start off with 'card not present' until we determine otherwise (gfx.py: _SD_ERRORS)
-    self._starting = True
+    self._show_splash = True
     
     # Event triggers
     self._shutdown = asyncio.ThreadSafeFlag()
@@ -117,7 +118,7 @@ class Gadget:
     oled.fill(0)
     
     # Draw a startup logo (hides spurious sd errors)
-    if self._starting:
+    if self._show_splash:
       
       # Randomise which version of the logo we get
       if time.ticks_cpu() & 1:
@@ -251,6 +252,7 @@ class Gadget:
   
   # Triggers a clean shutdown
   def power_off(self):
+    print('Called power_off()')
     self._shutdown.set()
   
   # Looks at the directory and generates a list of available Character objects
@@ -313,16 +315,23 @@ class Gadget:
     # Takes a framebuffer and a list of chars to show
     # Returns as many chars as it actually did show
     chars = gfx.draw_char_select( self.hal.eink, self._find_chars() )
+    
     if not _DEBUG_DISABLE_EINK:
       self.hal.eink_send_refresh()
     #print(chars)
+    
+    # If we have *no* characters, don't try to index into an empty list
+    if len(chars) > 0:
+      btn = lambda i: self._set_char( chars[i] )
+    else:
+      btn = lambda i: None
     
     # Set up the character chooser needle
     self.menu = menu.NeedleMenu(
       hal = self.hal,
       prio = HAL_PRIORITY_MENU,
       n = len(chars),
-      btn = lambda i: self._set_char( chars[i] ),
+      btn = btn,
       back = lambda x: self.power_off() # lambda x: self.hal.needle.wobble() # self.hal.hw.empty_battery.set()
     )
     
@@ -628,11 +637,9 @@ class Gadget:
     tasks = asyncio.create_task(asyncio.gather(
       self._shutdown_batt(),
       self._shutdown_clean(),
-      #self._battery_charge_waiter(),
       self._battery_low_waiter(),
       self._sd_controller(),
       self.wait_ani(),
-      self._startup_timeout(),
     ))
     
     # Oled idle stuff
@@ -644,23 +651,29 @@ class Gadget:
     )
     oled_idle = asyncio.create_task( self._oled_runner(oledcr) )
     
-    # Wait for the SD to be ready before continuing...
-    await self.sd_ok.wait()
+    # Gets called once the SD card is a known state (good or bad)
+    # If good, load characters as normal
+    # If bad, load whatever character may be in internal storage
+    # Will lead to blank selector if nothing there
+    # Character select screen reloads when a valid card with valid character files appears
+    def finish_startup():
+      self.show_shade(2,1)
+      self._show_splash = False
+      print('Startup complete.')
+      self._select_character()
     
-    self.show_shade(2,1)
-    
-    print('Startup complete.')
-    
-    # Set up character select scren
-    self._select_character()
+    # Wait until the card is either ready, or definitely not ready
+    await self.hal.sd.card_state_known.wait()
+    if not self.hal.sd.card_ready.is_set():
+      finish_startup()
+    else: # Card is present and we're still processing
+      
+      # Wait for the mount to either pass/fail
+      await self._sd_mount_attempted.wait()
+      finish_startup()
     
     await self._exit_loop.wait()
     print('Exiting.  Adios!')
-  
-  # Waits a short period, then sets _starting to False
-  async def _startup_timeout(self):
-    await asyncio.sleep_ms(_STARTUP_TIMEOUT_MS)
-    self._starting = False
   
   # Handles mounting/unmounting the SD card in response to un/plug events from the driver.
   # Sets/clears the sd_ok and sd_gone events.
@@ -680,6 +693,9 @@ class Gadget:
         self.sd_ok.set()
         self.sd_plug()
       
+      # Set this to flag the attempt (regardless of pass/fail)
+      self._sd_mount_attempted.set()
+      
       # Wait for the card to be unplugged
       await self.hal.sd.card_absent.wait()
       
@@ -688,6 +704,7 @@ class Gadget:
         vfs.umount( SD_ROOT )
       
       # Flags, hooks
+      self._sd_mount_attempted.clear()
       self.sd_ok.clear()
       self.sd_gone.set()
       self.sd_unplug()
@@ -749,6 +766,7 @@ class Gadget:
       dest_d.mkdir()
       
       # Move all files from internal dir to new sd dir
+      print(f'Moving internal directory {src_d.name}/ to SD as {dest_d.name}/')
       src_files = src_d.glob('*')
       for src_f in src_files:
         
@@ -770,6 +788,8 @@ class Gadget:
         
         # Delete the source file (this is a move, not a copy)
         src_f.unlink()
+        
+        print(f'Moved file {src_f.name}')
       
       # If we have a current character, 
       if self.character is not None:
@@ -786,6 +806,8 @@ class Gadget:
           # Character.save_now() will change the directory back if it hits problems
           if self.character.dir != dest_d:
             raise RuntimeError('Error moving current character out to SD card!')
+          
+          print(f'Moved current save location from internal to SD')
       
       # Delete internal dir
       src_d.rmdir()
@@ -814,14 +836,6 @@ class Gadget:
         ok = True
         break
     return ok
-  
-  # Reacts to the "battery charging" status changing (currently empty)
-  async def _battery_charge_waiter(self):
-    while True:
-      
-      await self.hal.batt_charge.wait()
-      
-      await self.hal.batt_discharge.wait()
   
   # Reacts to "battery low" condition
   async def _battery_low_waiter(self):
@@ -870,6 +884,7 @@ class Gadget:
   # Sets the _exit_loop event
   async def _shutdown_clean(self):
     await self._shutdown.wait()
+    print('Someone triggered _shutdown Event')
     
     self.cleanup()
     
@@ -1006,8 +1021,7 @@ class Gadget:
         i += 16
   
   def run(self):
-    """ Start the app. This function does not normally return, as
-        the server enters an endless listening loop.
+    """ Start the app. This function function returns only after the app shuts down.
 
         Example::
 
