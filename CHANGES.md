@@ -1,6 +1,6 @@
 TODO
 ====
-- If empty char select screen, do random wandering needle
+* Smaller NOSD logo for when there's no SD but that's ok
 * Hierarchical menus
   - Add a menu item to view errors that have been caught and logged
   - Add a menu item to take a screenshot
@@ -35,7 +35,7 @@ TODO
     - Tuple would need to be dynamically generated (eg. max hp varies with temp hp)
     - But tuple can be requested as soon as IA goes out of 'reset' state
     - Safe to assume it won't change during the adjustment (just maybe as a consequence of it)
-- Why does SD plug/unplug sometimes trigger (clean) shutdown?
+- Something calls power_off() in gadget.py when the SD is replugged (but only sometimes!)  What does this?
 - OLED menu and idle screen can draw simultaneously on rare occasions.  Fix this
   - Both SimpleAdjuster.render_title() and _oled_idle_render() call oled.fill(0) before doing anything, so this shouldn't happen
   - Neither of the above functions are coroutines or yield during execution
@@ -74,6 +74,7 @@ Visible Changes
   - Next time a validly-formatted SD card appears, the internal save will get moved to it automatically
   - If a character file already exists on the SD with the same name, the file being moved will be automatically renamed to prevent overwriting.
   - Both versions of the character will now be available for selection
+* In the character select screen, if nothing can be selected (eg. because SD was removed) the needle will wander randomly
 * When entering large numbers through the dial, increments now accelerate dynamically to speed up the process
 * Added bootup logo on oled, to hide spurious SD card errors that get shown while system is booting
 

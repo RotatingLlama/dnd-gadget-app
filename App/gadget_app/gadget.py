@@ -21,6 +21,7 @@ import vfs
 from micropython import const
 import micropython
 import time
+from os import urandom
 
 # Other libraries
 from .pathlib import Path
@@ -84,6 +85,7 @@ class Gadget:
     self._exit_loop = asyncio.Event()
     #
     self.play_wait_ani = asyncio.Event()
+    self._e_needle_wander = asyncio.Event()
     
     # Cleans up whatever we're currently doing, ready to do the next thing
     self.cleanup = lambda : None
@@ -253,6 +255,12 @@ class Gadget:
   # Triggers a clean shutdown
   def power_off(self):
     print('Called power_off()')
+    
+    # DEBUG
+    # Rudimentary breakpoint
+    if self.hal.batt_pc() is None:
+      raise Exception('whodunnit')
+    
     self._shutdown.set()
   
   # Looks at the directory and generates a list of available Character objects
@@ -325,6 +333,7 @@ class Gadget:
       btn = lambda i: self._set_char( chars[i] )
     else:
       btn = lambda i: None
+      self.needle_wander(True)
     
     # Set up the character chooser needle
     self.menu = menu.NeedleMenu(
@@ -338,18 +347,19 @@ class Gadget:
     # If the SD card is unplugged, wiggle the needle to indicate
     # self._set_char() will exit silently if it's triggered with no SD card in place
     def unplug():
-      self.hal.needle.wobble(True)
+      self.needle_wander(True)
     
     # If the SD card is replugged
     # Clean up this character picker instance and then start a new one
     # (because the newly-plugged card may well have different char data)
     def plug():
-      self.hal.needle.wobble(False)
+      self.needle_wander(False)
       self.cleanup()
       self._select_character()
     
     # Function to clean up this character picker instance
     def end():
+      self.needle_wander(False)
       self.menu.destroy()
       self.play_wait_ani.clear()
       self.cleanup = lambda : None
@@ -640,6 +650,7 @@ class Gadget:
       self._battery_low_waiter(),
       self._sd_controller(),
       self.wait_ani(),
+      self._needle_wander_waiter(),
     ))
     
     # Oled idle stuff
@@ -1022,6 +1033,48 @@ class Gadget:
         await wait(p)
         i += 16
   
+  def needle_wander(self,w=True):
+    if w:
+      self._e_needle_wander.set()
+    else:
+      self._e_needle_wander.clear()
+  
+  async def _needle_wander_waiter(self):
+    mom = 0
+    p = self.hal.needle.position
+    while True:
+      await self._e_needle_wander.wait()
+      
+      # Random number 0 to 1
+      r = urandom(1)[0] / 0xff
+      
+      pos = p()
+      
+      # Subtract the current position:
+      # - When position is zero, range stays 0 to 1
+      # - When position is 1, range becomes -1 to 0
+      # - When position is 0.5, range becomes -0.5 to 0.5
+      r -= pos
+      
+      # Update the momentum
+      mom += r
+      
+      # Clamp the momentum at +/- 10 full increments
+      mom = max( -10, mom )
+      mom = min( 10, mom )
+      
+      # Scale the momentum to a sensible figure and add it to pos
+      pos += mom/600
+      
+      # Clamp position to legal values
+      pos = max( 0, pos )
+      pos = min( 1, pos )
+      
+      # Set the needle
+      p( pos )
+      
+      await asyncio.sleep_ms(50)
+      
   def run(self):
     """ Start the app. This function function returns only after the app shuts down.
 
