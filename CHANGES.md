@@ -1,6 +1,5 @@
 TODO
 ====
-* TEST PROPERLY the internal save features
 - If empty char select screen, do random wandering needle
 * Hierarchical menus
   - Add a menu item to view errors that have been caught and logged
@@ -65,7 +64,7 @@ Gadget v0.4 - WIP
 
 Gameplay Changes & Bugfixes
 ---------------------------
-* Nothing yet
+* Fixed divide by zero errors when only one character is available to pick
 
 Visible Changes
 ---------------

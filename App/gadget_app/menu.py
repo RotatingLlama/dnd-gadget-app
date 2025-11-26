@@ -2,7 +2,7 @@
 # For OLED and LED Matrix displays
 #
 # T. Lloyd
-# 08 Nov 2025
+# 26 Nov 2025
 
 from .common import DeferredTask
 
@@ -47,7 +47,12 @@ class NeedleMenu:
       self.cr = None
   
   def _update(self):
-    self.hal.needle.position( self.i / self.max_i )
+    
+    # If we only have one item, assume it's in the middle
+    if self.max_i == 0:
+      self.hal.needle.position( 0.5 )
+    else:
+      self.hal.needle.position( self.i / self.max_i )
     
   def next(self):
     if self.i >= self.max_i:

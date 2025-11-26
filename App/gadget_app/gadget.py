@@ -2,7 +2,7 @@
 # For Micropython v1.26
 #
 # T. Lloyd
-# 24 Nov 2025
+# 26 Nov 2025
 
 
 # TO USE:
@@ -365,8 +365,8 @@ class Gadget:
   # Gets given the selected character object
   def _set_char(self, char ):
     
-    # Ignore call if the SD card has gone away
-    if not self.sd_ok.is_set():
+    # Ignore call if the character's directory has gone away
+    if not char.dir.is_dir():
       return
     
     # Clean up the char select screen
@@ -724,8 +724,11 @@ class Gadget:
     if not self._sd_is_mounted():
       vfs.mount( self.hal.sd.card, SD_ROOT )
     
-    # Ensure our root directory exists
-    #self.file_root.mkdir(parents=True, exist_ok=True)
+    # Check
+    if self._sd_is_mounted():
+      print('Mounted SD card on',SD_ROOT)
+    else:
+      return 3 # Could not mount SD
     
     # Try to move any internal saves out to the SD
     try:
@@ -739,7 +742,6 @@ class Gadget:
     if err > 0:
       return err
     
-    print('Mounted SD card on',SD_ROOT)
     return 0
   
   # Move all internal save data onto the SD card (assumes valid, mounted SD card)

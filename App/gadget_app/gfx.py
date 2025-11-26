@@ -1,7 +1,7 @@
 # Drawing functions
 #
 # T. Lloyd
-# 20 Nov 2025
+# 26 Nov 2025
 
 # Standard libraries
 import micropython
@@ -670,8 +670,13 @@ def draw_char_select( fb, chars ):
   # Truncate list to max length
   chars = chars[:_MAX_CHAR_HEADS]
   
-  # Angular distance between heads
-  da = _ATOTAL / ( len(chars) - 1 )
+  # Angular distance between heads, and position of first head
+  if len(chars) > 1:
+    da = _ATOTAL / ( len(chars) - 1 )
+    a = _ASTART
+  else:
+    da = 0
+    a = _ACENTRE
   
   # Offset to centre of character head (instead of top left)
   hdos = _CHAR_HEAD_SIZE // 2
@@ -679,7 +684,6 @@ def draw_char_select( fb, chars ):
   # Truncate text names
   max_name_len = _CHAR_HEAD_SIZE // 8 # Assume 8px letter width
   
-  a = _ASTART
   for char in chars:
     
     # Is there a headshot?
