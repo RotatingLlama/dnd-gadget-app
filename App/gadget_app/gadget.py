@@ -2,7 +2,7 @@
 # For Micropython v1.26
 #
 # T. Lloyd
-# 26 Nov 2025
+# 21 Dec 2025
 
 
 # TO USE:
@@ -504,38 +504,49 @@ class Gadget:
         set_abs=char.set_temp_hp
       )
     )
-    omi.append(
-      menu.SimpleAdjuster( om, self.hal,
-        prio=HAL_PRIORITY_MENU+2,
+    
+    ## Money submenu
+    #
+    money = menu.SubMenu( om, self.hal,
+      prio=HAL_PRIORITY_MENU+2,
+      title='GOLD'
+    )
+    mmi = money.menu.items
+    omi.append( money )
+    #
+    mmi.append(
+      menu.SimpleAdjuster( money.menu, self.hal,
+        prio=HAL_PRIORITY_MENU+3,
         title='GOLD',
         get_cur=lambda: char.stats['gold'],
         set_abs=char.set_gold
       )
     )
-    omi.append(
-      menu.SimpleAdjuster( om, self.hal,
-        prio=HAL_PRIORITY_MENU+2,
+    mmi.append(
+      menu.SimpleAdjuster( money.menu, self.hal,
+        prio=HAL_PRIORITY_MENU+3,
         title='SILVER',
         get_cur=lambda: char.stats['silver'],
         set_abs=char.set_silver
       )
     )
-    omi.append(
-      menu.SimpleAdjuster( om, self.hal,
-        prio=HAL_PRIORITY_MENU+2,
+    mmi.append(
+      menu.SimpleAdjuster( money.menu, self.hal,
+        prio=HAL_PRIORITY_MENU+3,
         title='COPPER',
         get_cur=lambda: char.stats['copper'],
         set_abs=char.set_copper
       )
     )
-    omi.append(
-      menu.SimpleAdjuster( om, self.hal,
-        prio=HAL_PRIORITY_MENU+2,
+    mmi.append(
+      menu.SimpleAdjuster( money.menu, self.hal,
+        prio=HAL_PRIORITY_MENU+3,
         title='ELECTRUM',
         get_cur=lambda: char.stats['electrum'],
         set_abs=char.set_electrum
       )
     )
+    
     omi.append(
       menu.SimpleAdjuster( om, self.hal,
         prio=HAL_PRIORITY_MENU+2,
@@ -576,9 +587,19 @@ class Gadget:
         allow_zero=True,
       )
     )
-    omi.append(
-      menu.SimpleAdjuster( om, self.hal,
-        prio=HAL_PRIORITY_MENU+2,
+    
+    # System Submenu
+    #
+    sysmenu = menu.SubMenu( om, self.hal,
+      prio=HAL_PRIORITY_MENU+2,
+      title='SYSTEM'
+    )
+    smi = sysmenu.menu.items
+    omi.append( sysmenu )
+    #
+    smi.append(
+      menu.SimpleAdjuster( sysmenu.menu, self.hal,
+        prio=HAL_PRIORITY_MENU+3,
         title='Brightness',
         # Get and set using the HAL function
         # Preview using the driver function, bypassing HAL's memory
@@ -590,15 +611,14 @@ class Gadget:
         allow_zero=True,
       )
     )
-    omi.append(
-      menu.FunctionConfirmer( om, self.hal,
-        prio=HAL_PRIORITY_MENU+2,
+    smi.append(
+      menu.FunctionConfirmer( sysmenu.menu, self.hal,
+        prio=HAL_PRIORITY_MENU+3,
         title='POWER OFF',
         confirmation='Shut down',
         con_func=self.power_off
       )
     )
-    
     
     # ROOT MENU #
     

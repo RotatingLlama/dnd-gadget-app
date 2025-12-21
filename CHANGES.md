@@ -1,11 +1,8 @@
 TODO
 ====
 * Smaller NOSD logo for when there's no SD but that's ok
-* Hierarchical menus
-  - Add a menu item to view errors that have been caught and logged
-  - Add a menu item to take a screenshot
 * How to handle things that reset at 'dawn', or that don't regain all charges on reset (eg. Armour of Magical Strength)
-  - This will need another menu entry.  Wait to implement after heirarchical menus are added.
+  - Add a 'reset' submenu.  Combine long rest, short rest and dawn
 * Combine 'charges' and other counters (gold, xp etc.)
   - 'reset' property is optional
   - 'max' property is optional
@@ -22,6 +19,11 @@ TODO
   - https://github.com/peterhinch/micropython-font-to-py
   - https://github.com/easytarget/microPyEZfonts
   - Honorable mention https://github.com/nickpmulder/ssd1306big/blob/main/ssd1306big.py
+  - Review everywhere that text is displayed, lots of 8x8 assumptions everywhere
+- System menu
+  - Add a menu item to view errors that have been caught and logged
+  - Add a menu item to take a screenshot
+  - Add a character select item
 - Improve the way the matrix animations work.  Viperise?
 - Way to skip character select screen and just go to last played
 - spell slots can reset on short rest for some classes
@@ -74,6 +76,7 @@ Visible Changes
   - Next time a validly-formatted SD card appears, the internal save will get moved to it automatically
   - If a character file already exists on the SD with the same name, the file being moved will be automatically renamed to prevent overwriting.
   - Both versions of the character will now be available for selection
+* Added support for hierarchical (multi-level) menus on the OLED
 * In the character select screen, if nothing can be selected (eg. because SD was removed) the needle will wander randomly
 * When entering large numbers through the dial, increments now accelerate dynamically to speed up the process
 * Added bootup logo on oled, to hide spurious SD card errors that get shown while system is booting

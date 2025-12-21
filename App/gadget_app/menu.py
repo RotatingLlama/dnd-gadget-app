@@ -2,11 +2,18 @@
 # For OLED and LED Matrix displays
 #
 # T. Lloyd
-# 26 Nov 2025
+# 21 Dec 2025
 
 from .common import DeferredTask
 
-# Drives the needle to select from a number of equally-spaced positions across its arc
+# ROOT MENUS
+# Must at minimum have a destroy() method.
+# This is called from the app, and should cause the root menu
+# to tidy up its CRs etc and die cleanly.
+
+
+# Drives the needle to select from a number of equally-spaced positions across its arc.
+# Acts as a root menu, does not have a parent.
 # hal: the HAL object
 # prio: The hal CR prioity
 # n: The number of positions to select between
@@ -66,10 +73,19 @@ class NeedleMenu:
     self.i -= 1
     self._update()
 
-
+# RootMenu
+# Just handles inputs and dispatches callbacks for them.  Its CR gets overridden by the "real" menus.
+# Additional methods besides destroy():
+#  init() - Pass input callbacks as named args to replace the default (noop) callbacks
+#  exit() - Terminator stub for cascading exit calls from children.  Does nothing.
+# Properties:
+#  menus - A list.  Not used by the library, but can be useful for external code.
 class RootMenu:
   def __init__(self,hal,prio,*args,**kwargs):
     self.hal = hal
+    
+    # This list isn't used by anything in menu.py,
+    # but provides a place to store refs to children so they don't get garbage collected
     self.menus = []
     
     self._cr = self.hal.register(
@@ -109,7 +125,7 @@ class OledMenu:
   def __init__(self,parent,hal,prio,wrap:bool=True):
     
     # Catch essential params
-    self.parent = parent
+    self.parent = parent # Only used for cascading exit() call
     self.hal = hal
     self.prio = prio
     self.wrap = wrap
@@ -201,9 +217,60 @@ class OledMenu:
     self.s = None
     self._unregister()
 
+# Prototype menu item class.
+# Provides methods:
+#  _register()
+#  _unregister()
+#  enter()
+#  exit()
+#  _leave()
+# Children must define methods:
+#  _update()
+#  render_title()
+class _OledMenuItem:
+  
+  def __init__(self, parent, hal, prio, title, ih ):
+    
+    # Capture these
+    self.parent = parent
+    self.hal = hal
+    self.prio = prio
+    self.title = title
+    self._ih = ih
+    
+    # Define this
+    self._cr = None
+  
+  def _register(self):
+    if self._cr is not None:
+      return
+    self._cr = self.hal.register(
+      priority=self.prio,
+      features=('input','oled',),
+      input_target=lambda i:self._ih[i](),
+      callback=self._update,
+      name=self.title,
+    )
+  
+  def _unregister(self):
+    if self._cr is not None:
+      self.hal.unregister( self._cr )
+      self._cr = None
+  
+  def enter(self):
+    self._register()
+  
+  def exit(self):
+    # Cascade before triggering CR deregistration, to prevent screen flickering through the cascade
+    self.parent.exit()
+    self._leave()
+  
+  def _leave(self):
+    self._unregister()
+
 # For adjusting numeric values
 # screen is 128/8 = 16 characters wide
-class SimpleAdjuster:
+class SimpleAdjuster(_OledMenuItem):
   def __init__(self,
     parent,      # The menu that this adjuster is attached to
     hal,         # HAL object (for control of hardware)
@@ -221,17 +288,14 @@ class SimpleAdjuster:
     max=None,    # Maximum allowable parameter
     allow_zero=False # Accept 'no adjustment'?  Default: no
   ):
-    self.parent = parent
-    self.hal = hal
-    self.prio = prio
     self.accel = IncrementAccelerator( self.adj )
-    self._ih = (
+    ih = (
       self._leave, # back
       self.btn,
       lambda: self.accel.adj(1), # cw
       lambda: self.accel.adj(-1) # ccw
     )
-    self.title = title
+    super().__init__(parent=parent, hal=hal, prio=prio, title=title, ih=ih)
     self.prompt = f'{title}:' if prompt is None else prompt
     self.get = get_cur
     self.set_abs = set_abs
@@ -252,23 +316,6 @@ class SimpleAdjuster:
       self.radj = adj_rel
     if ( not callable(set_abs) ) and ( not callable(set_rel) ):
       raise RuntimeError('At least one of set_abs or set_rel must be callable')
-    self._cr = None
-  
-  def _register(self):
-    if self._cr is not None:
-      return
-    self._cr = self.hal.register(
-      priority=self.prio,
-      features=('input','oled',),
-      input_target=lambda i:self._ih[i](),
-      callback=self._update,
-      name=self.title,
-    )
-  
-  def _unregister(self):
-    if self._cr is not None:
-      self.hal.unregister( self._cr )
-      self._cr = None
   
   def _update(self):
     oled = self.hal.oled
@@ -288,14 +335,6 @@ class SimpleAdjuster:
     oled.text( 'New:  ', 0, 20, 1 )
     oled.text( '% 4s' % (cur+d ) ,90,22,1)
     oled.show()
-  
-  def enter(self):
-    self._register()
-  
-  def exit(self):
-    # Cascade before triggering CR deregistration, to prevent screen flickering through the cascade
-    self.parent.exit()
-    self._leave()
   
   def render_title(self):
     oled = self.hal.oled
@@ -340,7 +379,7 @@ class SimpleAdjuster:
     # Done
     self.exit()
   
-  def _leave(self):
+  def _leave(self): # Override default _leave()
     self.d = 0
     self.accel.reset()
     self.aadj(self.get())
@@ -350,17 +389,14 @@ class SimpleAdjuster:
 # One adjustment affects two values
 class DoubleAdjuster( SimpleAdjuster ):
   def __init__(self,parent,hal,prio,title,preview,get_cur,set_new,a='A',b='B',adj_rel=None,min_d=0,max_d=None,min_a=None,min_b=None,max_a=None,max_b=None):
-    self.parent = parent
-    self.hal = hal
-    self.prio = prio
     self.accel = IncrementAccelerator( self.adj )
-    self._ih = (
+    ih = (
       self._leave, # back
       self.btn,
       lambda: self.accel.adj(1), # cw
       lambda: self.accel.adj(-1), # ccw
     )
-    self.title = title
+    super(SimpleAdjuster,self).__init__(parent=parent, hal=hal, prio=prio, title=title, ih=ih)
     self.preview = preview
     self.get = get_cur
     self.set = set_new
@@ -378,7 +414,6 @@ class DoubleAdjuster( SimpleAdjuster ):
     else:
       self.radj = adj_rel
     self.aadj = lambda x: True # Placeholder until we need to implement absolute adjustment in DoubleAdjuster
-    self._cr = None
   
   def _update(self):
     self.radj(self.d)
@@ -479,41 +514,17 @@ class DoubleAdjuster( SimpleAdjuster ):
     self.exit()
 
 # For confirming single actions
-class FunctionConfirmer:
+class FunctionConfirmer(_OledMenuItem):
   def __init__(self,parent,hal,prio,title,confirmation,con_func):
-    self.parent = parent
-    self.hal = hal
-    self.prio = prio
-    self._ih = (
+    ih = (
       self._leave, # back
       self.btn,
       lambda:None, # cw
       lambda:None # ccw
     )
-    self.title = title
+    super().__init__(parent=parent, hal=hal, prio=prio, title=title, ih=ih)
     self.c_text = confirmation
     self.c_func = con_func
-    self._cr = None
-  
-  def _register(self):
-    if self._cr is not None:
-      return
-    self._cr = self.hal.register(
-      priority=self.prio,
-      features=('input','oled',),
-      input_target=lambda i:self._ih[i](),
-      callback=self._update,
-      name=self.title,
-    )
-  
-  def _unregister(self):
-    if self._cr is not None:
-      self.hal.unregister( self._cr )
-      self._cr = None
-  
-  # Displays the UI
-  def enter(self):
-    self._register()
   
   def _update(self):
     oled = self.hal.oled
@@ -533,11 +544,6 @@ class FunctionConfirmer:
     
     oled.show()
   
-  def exit(self):
-    # Cascade before triggering CR deregistration, to prevent screen flickering through the cascade
-    self.parent.exit()
-    self._leave()
-  
   def render_title(self):
     oled = self.hal.oled
     oled.fill(0)
@@ -547,10 +553,44 @@ class FunctionConfirmer:
   def btn(self):
     self.c_func()
     self.exit()
-  
-  def _leave(self):
-    self._unregister()
 
+# A menu item to launch a submenu.
+# Lightweight wrapper to translate from _OledMenuItem instance to new OledMenu instance
+class SubMenu(_OledMenuItem):
+  def __init__(self,parent,hal,prio,title):
+    
+    super().__init__(parent=parent, hal=hal, prio=prio, title=title, ih=(lambda:None,)*4 )
+    
+    # Submenu's parent is our parent
+    # Submenu's priority is our priority
+    # We never render anything ourselves
+    # We never hold a CR
+    
+    self.menu = OledMenu(
+      parent=parent,
+      hal=hal,
+      prio=prio,
+      wrap=True
+    )
+  
+  # Override the default, (prevent CR from registering), immediately enter submenu
+  def enter(self):
+    self.menu.next_item()
+  
+  # Called by the parent menu
+  def render_title(self):
+    oled = self.hal.oled
+    oled.fill(0)
+    oled.text( self.title, 12,12,1)
+    oled.show()
+  
+  # Would be called by our inherited CR code, if we hadn't overridden it
+  # Still must exist
+  def _update(self):
+    pass
+  def _leave(self):
+    pass
+  
 
 # Manages the Matrix display
 # hal: The hal object
@@ -630,9 +670,7 @@ class MatrixMenu:
       
       # If we are being deactivated
       if self.r >= len(self.active_rows):
-        self.r = None
-        self.to.untouch()
-        self._unregister()
+        self.exit()
         return
     
     # Update the timeout
@@ -655,9 +693,7 @@ class MatrixMenu:
       
       # If we are being deactivated
       if self.r < 0:
-        self.r = None
-        self.to.untouch()
-        self._unregister()
+        self.exit()
         return
     
     # Update the timeout
