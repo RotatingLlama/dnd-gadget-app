@@ -1,7 +1,7 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 24 Nov 2025
+# 21 Dec 2025
 
 #import asyncio
 import os
@@ -526,6 +526,9 @@ class Character:
     
     if show:
       self.show_curr_hp()
+  
+  def dawn_reset(self, show=True):
+    pass
   
   # Gain HP
   # DOES validate

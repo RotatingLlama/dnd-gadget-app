@@ -121,23 +121,7 @@ class Gadget:
     
     # Draw a startup logo (hides spurious sd errors)
     if self._show_splash:
-      
-      # Randomise which version of the logo we get
-      if time.ticks_cpu() & 1:
-        # Shaded version
-        gfx.render_boot_logo(oled)
-        return
-      
-      # Lineart version
-      h( 8,5, 65, 1 )
-      v( 72,5, 11, 1 )
-      h( 72,16, 48, 1 )
-      v( 119,16, 11, 1 )
-      h( 119,26, -65, 1 )
-      v( 55,26, -11, 1 )
-      h( 55,15, -48, 1 )
-      v( 8,15, -11, 1 )
-      oled.show()
+      gfx.render_boot_logo(oled)
       return
     
     ### SD PROBLEMS ###
@@ -459,19 +443,28 @@ class Gadget:
     
     # OLED MENU #
     
-    om = menu.OledMenu(
+    om = menu.ScrollingOledMenu(
       parent=rm,
       hal=hal,
       prio=HAL_PRIORITY_MENU+1,
-      wrap=True
+      wrap=0
     )
     rm.menus.append(om)
-    
     omi = om.items
     
-    omi.append(
-      menu.DoubleAdjuster( om, self.hal,
-        prio=HAL_PRIORITY_MENU+2,
+    # Health submenu
+    #
+    submenu = menu.SubMenu( om, self.hal,
+      prio=HAL_PRIORITY_MENU+2,
+      title='Health'
+    )
+    smm = submenu.menu
+    smi = smm.items
+    omi.append( submenu )
+    #
+    smi.append(
+      menu.DoubleAdjuster( smm, self.hal,
+        prio=HAL_PRIORITY_MENU+3,
         title='Damage',
         preview=lambda d: char.damage_calc(-d),
         get_cur=lambda: ( char.stats['hp'][0], char.stats['hp'][2] ),
@@ -483,9 +476,9 @@ class Gadget:
         max_d=lambda: 0,
       )
     )
-    omi.append(
-      menu.SimpleAdjuster( om, self.hal,
-        prio=HAL_PRIORITY_MENU+2,
+    smi.append(
+      menu.SimpleAdjuster( smm, self.hal,
+        prio=HAL_PRIORITY_MENU+3,
         title='Heal',
         get_cur=lambda: char.stats['hp'][0],
         set_rel=char.heal,
@@ -496,10 +489,10 @@ class Gadget:
         max=char.stats['hp'][1]
       )
     )
-    omi.append(
-      menu.SimpleAdjuster( om, self.hal,
-        prio=HAL_PRIORITY_MENU+2,
-        title='TEMP HP',
+    smi.append(
+      menu.SimpleAdjuster( smm, self.hal,
+        prio=HAL_PRIORITY_MENU+3,
+        title='Temp HP',
         get_cur=lambda: 0, # Always starts at zero because we're always replacing
         set_abs=char.set_temp_hp
       )
@@ -507,66 +500,69 @@ class Gadget:
     
     ## Money submenu
     #
-    money = menu.SubMenu( om, self.hal,
+    submenu = menu.SubMenu( om, self.hal,
       prio=HAL_PRIORITY_MENU+2,
-      title='GOLD'
+      title='Currency'
     )
-    mmi = money.menu.items
-    omi.append( money )
+    smm = submenu.menu
+    smi = smm.items
+    omi.append( submenu )
     #
-    mmi.append(
-      menu.SimpleAdjuster( money.menu, self.hal,
+    smi.append(
+      menu.SimpleAdjuster( smm, self.hal,
         prio=HAL_PRIORITY_MENU+3,
-        title='GOLD',
+        title='Gold',
         get_cur=lambda: char.stats['gold'],
         set_abs=char.set_gold
       )
     )
-    mmi.append(
-      menu.SimpleAdjuster( money.menu, self.hal,
+    smi.append(
+      menu.SimpleAdjuster( smm, self.hal,
         prio=HAL_PRIORITY_MENU+3,
-        title='SILVER',
+        title='Silver',
         get_cur=lambda: char.stats['silver'],
         set_abs=char.set_silver
       )
     )
-    mmi.append(
-      menu.SimpleAdjuster( money.menu, self.hal,
+    smi.append(
+      menu.SimpleAdjuster( smm, self.hal,
         prio=HAL_PRIORITY_MENU+3,
-        title='COPPER',
+        title='Copper',
         get_cur=lambda: char.stats['copper'],
         set_abs=char.set_copper
       )
     )
-    mmi.append(
-      menu.SimpleAdjuster( money.menu, self.hal,
+    smi.append(
+      menu.SimpleAdjuster( smm, self.hal,
         prio=HAL_PRIORITY_MENU+3,
-        title='ELECTRUM',
+        title='Electrum',
         get_cur=lambda: char.stats['electrum'],
         set_abs=char.set_electrum
       )
     )
     
-    omi.append(
-      menu.SimpleAdjuster( om, self.hal,
-        prio=HAL_PRIORITY_MENU+2,
-        title='XP',
-        get_cur=lambda: char.stats['xp'],
-        set_abs=char.set_xp
-      )
+    ## Rest/reset submenu
+    #
+    submenu = menu.SubMenu( om, self.hal,
+      prio=HAL_PRIORITY_MENU+2,
+      title='Rest & Reset'
     )
-    omi.append(
-      menu.FunctionConfirmer( om, self.hal,
-        prio=HAL_PRIORITY_MENU+2,
-        title='LONG REST',
+    smm = submenu.menu
+    smi = smm.items
+    omi.append( submenu )
+    #
+    smi.append(
+      menu.FunctionConfirmer( smm, self.hal,
+        prio=HAL_PRIORITY_MENU+3,
+        title='Long Rest',
         confirmation='Take long rest',
         con_func=char.long_rest
       )
     )
-    omi.append(
-      menu.SimpleAdjuster( om, self.hal,
-        prio=HAL_PRIORITY_MENU+2,
-        title='SHORT REST',
+    smi.append(
+      menu.SimpleAdjuster( smm, self.hal,
+        prio=HAL_PRIORITY_MENU+3,
+        title='Short Rest',
         #       x x x x x x x x
         prompt='Use hit dice?',
         get_cur=lambda: char.stats['hd'][0],
@@ -576,10 +572,19 @@ class Gadget:
         allow_zero=True,
       )
     )
-    omi.append(
-      menu.SimpleAdjuster( om, self.hal,
-        prio=HAL_PRIORITY_MENU+2,
-        title='HIT DICE',
+    smi.append(
+      menu.FunctionConfirmer( smm, self.hal,
+        prio=HAL_PRIORITY_MENU+3,
+        title='Dawn Reset',
+        #             x x x x x x x x
+        confirmation='Dawn, no rest?',
+        con_func=char.dawn_reset
+      )
+    )
+    smi.append(
+      menu.SimpleAdjuster( smm, self.hal,
+        prio=HAL_PRIORITY_MENU+3,
+        title='Hit Dice',
         get_cur=lambda: char.stats['hd'][0],
         set_abs=char.set_hit_dice,
         min=0,
@@ -588,17 +593,29 @@ class Gadget:
       )
     )
     
-    # System Submenu
-    #
-    sysmenu = menu.SubMenu( om, self.hal,
-      prio=HAL_PRIORITY_MENU+2,
-      title='SYSTEM'
+    # XP is its own thing
+    omi.append(
+      menu.SimpleAdjuster( om, self.hal,
+        prio=HAL_PRIORITY_MENU+2,
+        title='XP',
+        get_cur=lambda: char.stats['xp'],
+        set_abs=char.set_xp
+      )
     )
-    smi = sysmenu.menu.items
-    omi.append( sysmenu )
+    
+    ## System submenu
+    #
+    submenu = menu.SubMenu( om, self.hal,
+      prio=HAL_PRIORITY_MENU+2,
+      title='System'
+    )
+    smm = submenu.menu
+    smi = smm.items
+    omi.append( submenu )
+    #
     #
     smi.append(
-      menu.SimpleAdjuster( sysmenu.menu, self.hal,
+      menu.SimpleAdjuster( smm, self.hal,
         prio=HAL_PRIORITY_MENU+3,
         title='Brightness',
         # Get and set using the HAL function
@@ -612,9 +629,9 @@ class Gadget:
       )
     )
     smi.append(
-      menu.FunctionConfirmer( sysmenu.menu, self.hal,
+      menu.FunctionConfirmer( smm, self.hal,
         prio=HAL_PRIORITY_MENU+3,
-        title='POWER OFF',
+        title='Power Off',
         confirmation='Shut down',
         con_func=self.power_off
       )

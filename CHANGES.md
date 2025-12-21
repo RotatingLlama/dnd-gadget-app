@@ -2,7 +2,7 @@ TODO
 ====
 * Smaller NOSD logo for when there's no SD but that's ok
 * How to handle things that reset at 'dawn', or that don't regain all charges on reset (eg. Armour of Magical Strength)
-  - Add a 'reset' submenu.  Combine long rest, short rest and dawn
+  - Implement dawn_reset() in character.py
 * Combine 'charges' and other counters (gold, xp etc.)
   - 'reset' property is optional
   - 'max' property is optional
@@ -76,7 +76,7 @@ Visible Changes
   - Next time a validly-formatted SD card appears, the internal save will get moved to it automatically
   - If a character file already exists on the SD with the same name, the file being moved will be automatically renamed to prevent overwriting.
   - Both versions of the character will now be available for selection
-* Added support for hierarchical (multi-level) menus on the OLED
+* Added support for hierarchical (multi-level) menus on the OLED and improved layout
 * In the character select screen, if nothing can be selected (eg. because SD was removed) the needle will wander randomly
 * When entering large numbers through the dial, increments now accelerate dynamically to speed up the process
 * Added bootup logo on oled, to hide spurious SD card errors that get shown while system is booting

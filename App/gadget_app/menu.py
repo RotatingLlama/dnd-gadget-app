@@ -121,8 +121,14 @@ class RootMenu:
 
 
 class OledMenu:
+  '''
+    wrap:
+    -1 = Exit on wrap
+     0 = Do nothing on wrap
+     1 = Full wrap
+  '''
   
-  def __init__(self,parent,hal,prio,wrap:bool=True):
+  def __init__(self,parent,hal,prio,wrap:int=0):
     
     # Catch essential params
     self.parent = parent # Only used for cascading exit() call
@@ -177,8 +183,10 @@ class OledMenu:
       
       # If we are falling off the end
       if self.s >= len(self.items):
-        if self.wrap:
+        if self.wrap > 0:
           self.s = 0
+        elif self.wrap == 0:
+          self.s = len(self.items) - 1
         else:
           self._leave()
           return
@@ -199,8 +207,10 @@ class OledMenu:
       
       # If we are falling off the end
       if self.s < 0:
-        if self.wrap:
-          self.s = len(self.items)-1
+        if self.wrap > 0:
+          self.s = len(self.items) - 1
+        elif self.wrap == 0:
+          self.s = 0
         else:
           self._leave()
           return
@@ -217,6 +227,96 @@ class OledMenu:
     self.s = None
     self._unregister()
 
+# Same as OledMenu but shows multiple entries and scrolls them
+class ScrollingOledMenu(OledMenu):
+  def _render(self):
+    if self.wrap == 0:
+      self._render_stop()
+    else:
+      self._render_wrap_exit()
+  
+  # Full wrap, or leaves blank space at ends
+  def _render_wrap_exit(self):
+    if self.s is not None:
+      
+      oled = self.hal.oled
+      oled.fill(0)
+      
+      n = 3         # How many entries to show at once
+      x = (n-1)//2  # The entry position to hilight
+      yspacing = 12 # Pixel spacing between entries
+      
+      s = self.s-x
+      for i in range( n ):
+        
+        # i = Position on screen
+        # s = Position in items list
+        
+        # Make sure we wra, if neededp
+        if self.wrap > 0:
+          s %= len(self.items)
+        
+        # Ignore entry if out of bounds
+        if s < 0:
+          s += 1
+          continue
+        if s >= len(self.items):
+          break
+        
+        # Generate the text
+        t = self.items[ s ].get_title()
+        oled.text( t, 3, i*yspacing, 1 )
+        
+        # Add the border if this is the selected entry
+        if i == x:
+          oled.rect( 0, (yspacing*x)-3, (len(t)*8)+6,14, 1 )
+        
+        # Next
+        s += 1
+      
+      oled.show()
+  
+  # Can't scroll past ends, box moves, never blank space
+  def _render_stop(self):
+    if self.s is not None:
+      
+      lsi = len(self.items)
+      oled = self.hal.oled
+      oled.fill(0)
+      
+      n = 3         # How many entries to show at once
+      x = (n-1)//2  # The entry position to hilight by default
+      yspacing = 12 # Pixel spacing between entries
+      
+      # Figure out the first item to show
+      s = self.s-x
+      if s + n > lsi: # If we're going to run out of things to display:
+        s = lsi - n     # Set the start based on only on the list length and display count
+      if s < 0:       # If we have an invalid start point:
+        s = 0           # Reset to safe value
+      
+      for i in range( n ):
+        
+        # i = Position on screen
+        # s = Position in items list
+        
+        # Stop if entry is out of bounds
+        if s >= lsi:
+          break
+        
+        # Generate the text
+        oled.text( self.items[ s ].get_title(), 4, i*yspacing, 1 )
+        
+        # Add the indicator if this is the selected entry
+        if s == self.s:
+          oled.vline( 0, (yspacing*i)+2, 4, 1 )
+          oled.vline( 1, (yspacing*i)+3, 2, 1 )
+        
+        # Next
+        s += 1
+      
+      oled.show()
+  
 # Prototype menu item class.
 # Provides methods:
 #  _register()
@@ -259,6 +359,9 @@ class _OledMenuItem:
   
   def enter(self):
     self._register()
+  
+  def get_title(self) -> str:
+    return self.title
   
   def exit(self):
     # Cascade before triggering CR deregistration, to prevent screen flickering through the cascade
@@ -339,8 +442,11 @@ class SimpleAdjuster(_OledMenuItem):
   def render_title(self):
     oled = self.hal.oled
     oled.fill(0)
-    oled.text( self.title + ': ' + str(self.get()) ,12,12,1)
+    oled.text( self.get_title(), 12,12,1)
     oled.show()
+  
+  def get_title(self) -> str:
+    return self.title + ': ' + str(self.get())
   
   def adj(self, i ):
     
@@ -464,6 +570,10 @@ class DoubleAdjuster( SimpleAdjuster ):
     oled.text( self.title, 12,12, 1)
     oled.show()
   
+  # Restore the default _OledMenuItem behaviour - don't use the SimpleAdjuster version
+  def get_title(self):
+    return self.title
+  
   # Adjust self.d, by increment i (if permissible)
   def adj(self, i ):
     
@@ -557,7 +667,7 @@ class FunctionConfirmer(_OledMenuItem):
 # A menu item to launch a submenu.
 # Lightweight wrapper to translate from _OledMenuItem instance to new OledMenu instance
 class SubMenu(_OledMenuItem):
-  def __init__(self,parent,hal,prio,title):
+  def __init__(self,parent,hal,prio,title,wrap=0):
     
     super().__init__(parent=parent, hal=hal, prio=prio, title=title, ih=(lambda:None,)*4 )
     
@@ -566,11 +676,11 @@ class SubMenu(_OledMenuItem):
     # We never render anything ourselves
     # We never hold a CR
     
-    self.menu = OledMenu(
+    self.menu = ScrollingOledMenu(
       parent=parent,
       hal=hal,
       prio=prio,
-      wrap=True
+      wrap=wrap
     )
   
   # Override the default, (prevent CR from registering), immediately enter submenu
