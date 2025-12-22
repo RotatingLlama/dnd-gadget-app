@@ -1,7 +1,7 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 21 Dec 2025
+# 22 Dec 2025
 
 #import asyncio
 import os
@@ -70,82 +70,82 @@ def val_zpint(v,t):
     return t+' must be >= 0'
 
 # Checks the triplet of HP values
-def val_hp(c,m,t):
-  
-  # Check we have a full complement
-  if c is None:
-    return 'Missing hp_current'
-  if m is None:
-    return 'Missing hp_max'
-  if t is None:
-    return 'Missing hp_temp'
-  
-  # Check all the values are ok
-  e = val_zpint(c,'Current HP')
-  if e:
-    return e
-  e = val_pint(m,'Max HP')
-  if e:
-    return e
-  e = val_zpint(t,'Temp HP')
-  if e:
-    return e
-  
-  if int(c) > int(m):
-    return 'HP is more than max'
+#def val_hp(c,m,t):
+#  
+#  # Check we have a full complement
+#  if c is None:
+#    return 'Missing hp_current'
+#  if m is None:
+#    return 'Missing hp_max'
+#  if t is None:
+#    return 'Missing hp_temp'
+#  
+#  # Check all the values are ok
+#  e = val_zpint(c,'Current HP')
+#  if e:
+#    return e
+#  e = val_pint(m,'Max HP')
+#  if e:
+#    return e
+#  e = val_zpint(t,'Temp HP')
+#  if e:
+#    return e
+#  
+#  if int(c) > int(m):
+#    return 'HP is more than max'
 
 # Checks the hit dice values
 # STILL NEEDED?
-def val_hd(c,m):
-  
-  # Check we have a full complement
-  if c is None:
-    return 'Missing hd_current'
-  if m is None:
-    return 'Missing hd_max'
-  
-  # Check the values are ok
-  e = val_zpint(c,'Current HD')
-  if e:
-    return e
-  e = val_pint(m,'Max HD')
-  if e:
-    return e
-  
-  if int(c) > int(m):
-    return 'Hit dice are more than max'
+#def val_hd(c,m):
+#  
+#  # Check we have a full complement
+#  if c is None:
+#    return 'Missing hd_current'
+#  if m is None:
+#    return 'Missing hd_max'
+#  
+#  # Check the values are ok
+#  e = val_zpint(c,'Current HD')
+#  if e:
+#    return e
+#  e = val_pint(m,'Max HD')
+#  if e:
+#    return e
+#  
+#  if int(c) > int(m):
+#    return 'Hit dice are more than max'
 
 # Checks a pair if Spell values
-def val_spell(c,m,i):
-  e = val_zpint(c,f'Spell slot {i}')
-  if e:
-    return e
-  e = val_pint(m,f'Spell max {i}')
-  if e:
-    return e
-  
-  if int(c) > int(m):
-    return f'Spell slots {i} > max'
+#def val_spell(c,m,i):
+#  e = val_zpint(c,f'Spell slot {i}')
+#  if e:
+#    return e
+#  e = val_pint(m,f'Spell max {i}')
+#  if e:
+#    return e
+#  
+#  if int(c) > int(m):
+#    return f'Spell slots {i} > max'
 
 # Checks a quad of Charge values
-def val_charge(name,curr,max,reset,i):
-  e = val_str(name, f'Item {i} name')
-  if e:
-    return e
-  e = val_zpint(curr,f'Item {i} charges')
-  if e:
-    return e
-  e = val_pint(max,f'Item {i} max')
-  if e:
-    return e
-  # val_str() isn't useful for checking reset value
-  
-  if int(curr) > int(max):
-    return f'Item {i} charges > max'
-  
-  for r in reset:
-    if r not in ( 'lr', 'sr' ):
-      return f'Item {i} invalid reset'
+#def val_charge(name,curr,max,reset,i):
+#  e = val_str(name, f'Item {i} name')
+#  if e:
+#    return e
+#  e = val_zpint(curr,f'Item {i} charges')
+#  if e:
+#    return e
+#  e = val_pint(max,f'Item {i} max')
+#  if e:
+#    return e
+#  # val_str() isn't useful for checking reset value
+#  
+#  if int(curr) > int(max):
+#    return f'Item {i} charges > max'
+#  
+#  for r in reset:
+#    if r not in ( 'lr', 'sr', 'dawn' ):
+#      return f'Item {i} invalid reset'
 
 # Individual params.  HP, Spells and Charges are treated differently.
 # load() will check:
@@ -450,7 +450,7 @@ class Character:
       if type(rst) is not list:
         raise CharacterError( f'Charge #{i+1} has invalid reset' )
       for r in rst:
-        if r in ( 'lr', 'sr' ):
+        if r in ( 'lr', 'sr', 'dawn' ):
           ch[i]['reset'].append( r )
     
     # Assemble
@@ -466,16 +466,16 @@ class Character:
   def short_rest(self, hit_dice=0, show=True):
     
     # Localise
-    cgs = self.stats['charges']
+    st = self.stats
     
     # Apply hit dice reduction.
     # Silently clamp overspend
-    self.stats['hd'][0] = max( self.stats['hd'][0] - hit_dice, 0 )
+    st['hd'][0] = max( st['hd'][0] - hit_dice, 0 )
     
     # Option to do spell slots here?
     
     # Reset all short-rest charges to max
-    for c in cgs:
+    for c in st['charges']:
       if 'sr' in c['reset']:
         c['curr'] = c['max']
     
@@ -528,7 +528,14 @@ class Character:
       self.show_curr_hp()
   
   def dawn_reset(self, show=True):
-    pass
+    
+    for c in self.stats['charges']:
+      if 'dawn' in c['reset']:
+        c['curr'] = c['max']
+    
+    self.save()
+    
+    self.draw_mtx( show=show )
   
   # Gain HP
   # DOES validate

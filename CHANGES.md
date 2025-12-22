@@ -1,8 +1,7 @@
 TODO
 ====
 * Smaller NOSD logo for when there's no SD but that's ok
-* How to handle things that reset at 'dawn', or that don't regain all charges on reset (eg. Armour of Magical Strength)
-  - Implement dawn_reset() in character.py
+- How to handle things that don't regain all charges on reset (eg. Armour of Magical Strength)
 * Combine 'charges' and other counters (gold, xp etc.)
   - 'reset' property is optional
   - 'max' property is optional
@@ -66,6 +65,7 @@ Gadget v0.4 - WIP
 
 Gameplay Changes & Bugfixes
 ---------------------------
+* Added support for items that reset at dawn (as opposed to long rest, etc.)
 * Fixed divide by zero errors when only one character is available to pick
 
 Visible Changes

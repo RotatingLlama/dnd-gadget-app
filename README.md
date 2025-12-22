@@ -58,8 +58,8 @@ All of a character's information is stored in their `stats.json` file.
   - How many charges/uses it currently has remaining
   - How many it has when it resets
   - What triggers a reset:
-    - Currently "lr" and "sr" are allowed, for long and short rests respectively.
-    - It's valid to specify one, both or none of these intervals.
+    - Allowed codes are "lr", "sr" and "dawn", for things that reset at long rests, short rests and dawn respectively.
+    - It's valid to specify any number of these intervals, including none.
 ```
 {
       "name": "Hemlock",
@@ -86,9 +86,9 @@ All of a character's information is stored in their `stats.json` file.
       "charges": [
             {"current": 1, "max": 1, "name": "Arcane Recovery", "reset": ["lr"]},
             {"current": 3, "max": 3, "name": "Fey Step", "reset": ["lr"]},
-            {"current": 0, "max": 1, "name": "Cape of the Mountbank", "reset": ["lr"]},
-            {"current": 1, "max": 1, "name": "Dagger of Venom", "reset": ["lr"]},
-            {"current": 1, "max": 3, "name": "Rusty Bag of Tricks", "reset": ["lr"]}
+            {"current": 0, "max": 1, "name": "Cape of the Mountbank", "reset": ["lr","dawn"]},
+            {"current": 1, "max": 1, "name": "Dagger of Venom", "reset": ["lr","dawn"]},
+            {"current": 1, "max": 3, "name": "Rusty Bag of Tricks", "reset": ["lr","dawn"]}
       ]
 }
 ```
