@@ -1,7 +1,6 @@
 TODO
 ====
 * Smaller NOSD logo for when there's no SD but that's ok
-- How to handle things that don't regain all charges on reset (eg. Armour of Magical Strength)
 * Combine 'charges' and other counters (gold, xp etc.)
   - 'reset' property is optional
   - 'max' property is optional
@@ -14,18 +13,29 @@ TODO
   - Rationalise character load-in and matrix geometry calculation:
     - Both of these have opinions about how many charges are permissible
     - These opinions should always match, or better yet come from the same source
+- Add ability to adjust max HP during play
+  - Store original max hp
+  - Record new max hp - absolute or relative?
+  - What do do with current hp when max increases or decreases?
+  - What to do with existing code that looks at max hp?
+- Allow save files to specify what ruleset applies to them
+  - 2014, 2024, pathfinder, etc
+  - make _play_screen() in gadget.py selectable (different rulesets will need different menu options)
+  - make Character class in character.py selectable (different rulesets will need different character behaviour and save options)
+  - everything else should be agnostic to this
 * Fonts
   - https://github.com/peterhinch/micropython-font-to-py
   - https://github.com/easytarget/microPyEZfonts
   - Honorable mention https://github.com/nickpmulder/ssd1306big/blob/main/ssd1306big.py
   - Review everywhere that text is displayed, lots of 8x8 assumptions everywhere
+- How to handle things that don't regain all charges on reset (eg. Armour of Magical Strength)
+- spell slots can reset on short rest for some classes
 - System menu
   - Add a menu item to view errors that have been caught and logged
   - Add a menu item to take a screenshot
   - Add a character select item
 - Improve the way the matrix animations work.  Viperise?
 - Way to skip character select screen and just go to last played
-- spell slots can reset on short rest for some classes
 - menu.py fast scrolling should trigger on more predictable intervals
   - eg. 40, 400, 4000 etc.
   - Instead of after n rotations, leading to 40, 440, 4440, etc.
