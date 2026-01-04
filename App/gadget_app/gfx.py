@@ -1,7 +1,7 @@
 # Drawing functions
 #
 # T. Lloyd
-# 26 Nov 2025
+# 04 Jan 2026
 
 # Standard libraries
 import micropython
@@ -25,6 +25,7 @@ _IMG_SKULL    = const('/assets/skull.pi')
 _IMG_LOWBATT  = const('/assets/low_batt.2ink')
 _IMG_DEADBATT = const('/assets/deadbatt.2ink')
 _IMG_NOSD     = const('/assets/nosd.pi')
+_IMG_NOSD_SM  = const('/assets/nosd_24x16.pi')
 
 # Universal constants
 # MP-1.24.1 seems to round floats to 7 d.p.
@@ -715,19 +716,23 @@ def render_boot_logo(oled):
     
 # Render the SD error screen on the oled, with some text.
 def render_sd_error( e:int, oled ):
-    
-    oled.fill(0)
-    
-    # No-SD graphic
-    fb = img.load( _IMG_NOSD )
-    oled.blit(fb,0,0)
-    
-    # Display message
-    lines = _SD_ERRORS[e].split('\n')
-    h = min( len(lines)*8, 32 )
-    y = ( 32 - h ) // 2
-    for line in lines:
-      oled.text( line, 57,y )
-      y += 8
-    
-    oled.show()
+  
+  oled.fill(0)
+  
+  # No-SD graphic
+  fb = img.load( _IMG_NOSD )
+  oled.blit(fb,0,0)
+  
+  # Display message
+  lines = _SD_ERRORS[e].split('\n')
+  h = min( len(lines)*8, 32 )
+  y = ( 32 - h ) // 2
+  for line in lines:
+    oled.text( line, 57,y )
+    y += 8
+  
+  oled.show()
+
+# Returns a framebiuffer with the small (24x16) nosd image in it, ready for blitting
+def get_sd_fb():
+  return img.load( _IMG_NOSD_SM )

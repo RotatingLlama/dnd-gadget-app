@@ -2,7 +2,7 @@
 # For Micropython v1.26
 #
 # T. Lloyd
-# 21 Dec 2025
+# 04 Jan 2026
 
 
 # TO USE:
@@ -31,6 +31,7 @@ from .common import CHAR_STATS, SD_ROOT, SD_DIR, CHAR_SUBDIR, CHAR_HEAD, INTERNA
 from . import menu
 from .hal import HAL
 from .character import Character, CharacterError
+from .oledidle import OledIdle
 from . import gfx
 
 _DEBUG_DISABLE_EINK = const(False)
@@ -48,15 +49,6 @@ _MTX_TIMEOUT = const(3000)
 
 # How long we expect the eink to take to blank out
 _EINK_BLANK_MS = const(15700)
-
-# How long to ignore SD errors for, after initial startup
-_STARTUP_TIMEOUT_MS = const(300)
-
-# Store this figure for future use
-_MEM_TOTAL = gc.mem_alloc() + gc.mem_free()
-
-# Used for memory history graph on idle screen
-memlog = bytearray(33) # 32-long ring buffer, plus pointer
 
 # Make this object here because it's used in a few places
 INTERNAL_SAVEDIR = Path(INTERNAL_SAVEDIR)
@@ -96,145 +88,6 @@ class Gadget:
     
     # Make sure this exists
     INTERNAL_SAVEDIR.mkdir(parents=True, exist_ok=True)
-  
-  # Regularly updates the oled with idle stuff
-  async def _oled_runner(self,cr):
-    o = self._oled_idle_render
-    s = asyncio.sleep_ms
-    while True:
-      if cr.ready:
-        o()
-      await s(_OLED_IDLE_REFRESH)
-  
-  # Render all the idle screen stuff
-  def _oled_idle_render(self):
-    
-    # Localisation
-    oled = self.hal.oled
-    v = oled.vline
-    h = oled.hline
-    r = oled.rect
-    p = oled.pixel
-    t = oled.text
-    
-    oled.fill(0)
-    
-    # Draw a startup logo (hides spurious sd errors)
-    if self._show_splash:
-      gfx.render_boot_logo(oled)
-      return
-    
-    ### SD PROBLEMS ###
-    #
-    # If there's an SD problem, override the rest of this screen
-    #
-    # Hardware errors get priority
-    e = self.hal.get_sd_status()
-    if e > 0:
-      gfx.render_sd_error( e, oled )
-      return
-    # If the card's fine but there's something else wrong
-    if self._sd_err > 0:
-      gfx.render_sd_error( self._sd_err, oled )
-      return
-    
-    ### BATTERY MONITOR ###
-    
-    # Top-left point
-    x = 127
-    y = 0
-    #
-    # Draw the battery outline             xxxxxxxxxxxx+
-    v( x-1,  y,     6, 1 ) # Right wall    x          x
-    v( x,    y+2,   3, 1 ) # Nub           x          xx
-    h( x-1,  y,   -12, 1 ) # Top wall      x          xx
-    v( x-12, y,     6, 1 ) # Left wall     x          xx
-    h( x-1,  y+6, -12, 1 ) # Bottom wall   x          x
-    #                                      xxxxxxxxxxxx
-    
-    pc = self.hal.batt_pc()
-    if pc is None:
-      # If we didn't get a percentage, we probably have VBUS
-      txt = 'USB'
-    else:
-        
-      # How full is the battery?
-      bars = ( pc // 10 )
-      
-      # Draw the bars
-      for i in range(bars):
-        v( x-11+i, y+1, 5, 1 )
-      
-      # Percentage text
-      txt = f'{pc}%'
-    
-    t( txt, x - 12 -( 8*len(txt) ), y, 1 )
-    t( f'{round(self.hal.hw.voltage_stable(),4)}v', x-47, y+8, 1 )
-    
-    
-    ### EINK BUSY INDICATOR ###
-    #
-    # Icon to indicate eink busy, direct from Pin
-    if self.hal.eink.Busy.value() == 0:
-      t( 'e', 120,24, 1 )
-    
-    
-    ### MEMORY USAGE % ###
-    #
-    ma = gc.mem_alloc
-    t( f'M: { ( ma() * 100 ) // _MEM_TOTAL }%', 0,0, 1 )
-    
-    
-    ### BOOT ARG ###
-    #t( str(self.boot_arg) ,40,16,1)
-    
-    
-    ### MEMORY HISTORY GRAPH ###
-    #
-    mlen = len(memlog) - 1
-    mptr = memlog[mlen] # Pointer is last element of memlog
-    
-    # Record current mem usage (on a scale of 0-16) at mptr
-    memlog[mptr] = ( ma() << 4 ) // _MEM_TOTAL
-    
-    # Set up the graph
-    r( 0,16, 32,16, 0, True ) # Blank out our rectangle
-    v( 33,16, 16, 1 ) # axis line
-    
-    # Start at the beginning
-    mptr = ( mptr+1 ) % mlen
-    
-    # Loop through memlog
-    for i in range(mlen):
-      p( i, mlen-memlog[mptr], 1 )
-      mptr = ( mptr+1 ) % mlen
-    
-    # Store the updated mptr
-    memlog[mlen] = mptr
-    
-    
-    ### SAVE INDICATOR ###
-    #
-    # Displays whenever a save is pending
-    #
-    if self.character is not None:
-      # Top left corner
-      x = 35
-      y = 16
-      if self.character.is_dirty():
-        # Draw a 12x12 floppy disk icon
-        v(x,    y+1,   10, 1 ) # Left wall
-        h(x+1,  y+11,  10, 1 ) # Bottom
-        v(x+11, y+10,  -9, 1 ) # Right wall
-        p(x+10, y+1, 1 )       # Corner
-        h(x+9,  y,     -9, 1 ) # Top
-        r(x+2, y+7, 8,5, 1, False ) # Label
-        r(x+3, y,   6,4, 1, False ) # Shield outline
-        r(x+4, y+1, 2,2, 1, False ) # Shield fill
-    
-    
-    ### DONE ###
-    oled.show()
   
   # Triggers a clean shutdown
   def power_off(self):
@@ -691,13 +544,7 @@ class Gadget:
     ))
     
     # Oled idle stuff
-    oledcr = self.hal.register(
-      priority=HAL_PRIORITY_IDLE,
-      features=('oled',),
-      callback=self._oled_idle_render,
-      name='OledIdle'
-    )
-    oled_idle = asyncio.create_task( self._oled_runner(oledcr) )
+    oled_idle = OledIdle( gadget=self, refresh_ms=_OLED_IDLE_REFRESH )
     
     # Gets called once the SD card is a known state (good or bad)
     # If good, load characters as normal
