@@ -150,7 +150,9 @@ class Gadget:
     return chars
   
   # Sets up the selector
-  def _select_character(self):
+  def select_character(self):
+    
+    self.cleanup()
     
     # Loading screen
     self.play_wait_ani.set()
@@ -189,8 +191,8 @@ class Gadget:
     # (because the newly-plugged card may well have different char data)
     def plug():
       self.needle_wander(False)
-      self.cleanup()
-      self._select_character()
+      #self.cleanup() # select_character() now does this itself
+      self.select_character()
     
     # Function to clean up this character picker instance
     def end():
@@ -207,7 +209,8 @@ class Gadget:
     self.sd_unplug = unplug
   
   # Gets called when a character is chosen
-  # Gets given the selected character object
+  # Calls the char select screen destructor
+  # Sets things up for play, using the provided Character object
   def _set_char(self, char ):
     
     # Ignore call if the character's directory has gone away
@@ -224,7 +227,7 @@ class Gadget:
     
     if not _DEBUG_DISABLE_EINK:
       char.draw_eink()
-    #char.draw_mtx()
+    #char.draw_mtx() # This is handled automatically by the matrix idle CR
     char.show_curr_hp()
     
     # Set up the matrix and oled menus (ui.py)
@@ -258,7 +261,7 @@ class Gadget:
       self.show_shade(2,1)
       self._show_splash = False
       print('Startup complete.')
-      self._select_character()
+      self.select_character()
     
     # Wait until the card is either ready, or definitely not ready
     await self.hal.sd.card_state_known.wait()

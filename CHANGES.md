@@ -87,6 +87,7 @@ Visible Changes
   - If a character file already exists on the SD with the same name, the file being moved will be automatically renamed to prevent overwriting.
   - Both versions of the character will now be available for selection
 * Added support for hierarchical (multi-level) menus on the OLED and improved layout
+  - Added 'switch character' menu option
 * In the character select screen, if nothing can be selected (eg. because SD was removed) the needle will wander randomly
 * When entering large numbers through the dial, increments now accelerate dynamically to speed up the process
 * Added bootup logo on oled, to hide spurious SD card errors that get shown while system is booting

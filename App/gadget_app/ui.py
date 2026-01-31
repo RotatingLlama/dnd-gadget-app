@@ -249,6 +249,22 @@ def play_menus(self):
   #
   #
   smi.append(
+    menu.FunctionConfirmer( smm, self.hal,
+      prio=HAL_PRIORITY_MENU+3,
+      title='Power Off',
+      confirmation='Shut down',
+      con_func=self.power_off
+    )
+  )
+  smi.append(
+    menu.FunctionConfirmer( smm, self.hal,
+      prio=HAL_PRIORITY_MENU+3,
+      title='Change Character',
+      confirmation='Switch character',
+      con_func=self.select_character
+    )
+  )
+  smi.append(
     menu.SimpleAdjuster( smm, self.hal,
       prio=HAL_PRIORITY_MENU+3,
       title='Brightness',
@@ -260,14 +276,6 @@ def play_menus(self):
       min=0,
       max=15,
       allow_zero=True,
-    )
-  )
-  smi.append(
-    menu.FunctionConfirmer( smm, self.hal,
-      prio=HAL_PRIORITY_MENU+3,
-      title='Power Off',
-      confirmation='Shut down',
-      con_func=self.power_off
     )
   )
   
