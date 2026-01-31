@@ -94,6 +94,7 @@ Visible Changes
 Invisible Changes
 -----------------
 * Now sets internal clock at startup based on most recent savefile time
+* Moved code out of gadget.py into new oledidle.py and ui.py
 
 
 Gadget v0.3 - 01 Nov 2025
