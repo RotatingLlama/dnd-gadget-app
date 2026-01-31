@@ -33,7 +33,6 @@ TODO
 - System menu
   - Add a menu item to view errors that have been caught and logged
   - Add a menu item to take a screenshot
-  - Add a character select item
 - Improve the way the matrix animations work.  Viperise?
 - Way to skip character select screen and just go to last played
 - menu.py fast scrolling should trigger on more predictable intervals

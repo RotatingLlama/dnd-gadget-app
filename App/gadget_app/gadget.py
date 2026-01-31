@@ -74,6 +74,7 @@ class Gadget:
     self._shutdown = asyncio.ThreadSafeFlag()
     self._exit_loop = asyncio.Event()
     #
+    self._play_ani = asyncio.Event()
     self.play_wait_ani = asyncio.Event()
     self._e_needle_wander = asyncio.Event()
     
@@ -156,6 +157,7 @@ class Gadget:
     
     # Loading screen
     self.play_wait_ani.set()
+    #self.play_ani(ani_squares,100)
     
     # Takes a framebuffer and a list of chars to show
     # Returns as many chars as it actually did show
@@ -191,7 +193,6 @@ class Gadget:
     # (because the newly-plugged card may well have different char data)
     def plug():
       self.needle_wander(False)
-      #self.cleanup() # select_character() now does this itself
       self.select_character()
     
     # Function to clean up this character picker instance
@@ -199,6 +200,7 @@ class Gadget:
       self.needle_wander(False)
       self.menu.destroy()
       self.play_wait_ani.clear()
+      #self.stop_ani()
       self.cleanup = lambda : None
       self.sd_plug = lambda : None
       self.sd_unplug = lambda : None
@@ -245,7 +247,8 @@ class Gadget:
       self._shutdown_clean(),
       self._battery_low_waiter(),
       self._sd_controller(),
-      self.wait_ani(),
+      self._wait_ani_runner(),
+      self._ani_runner(),
       self._needle_wander_waiter(),
     ))
     
@@ -496,7 +499,7 @@ class Gadget:
     # Blank eink
     #t1 = time.ticks_ms()
     et = asyncio.create_task( self._clear_eink_needle() )
-    m = asyncio.create_task( self.ani( ani_squares, 100 ) )
+    self.play_ani(ani_squares,100)
     
     # Wait message
     cr = self.hal.register(
@@ -555,7 +558,31 @@ class Gadget:
     # Stop
     self._exit_loop.set()
   
-  async def wait_ani(self):
+  # Display a monotone shading to the matrix
+  # s     The shade to use.  Accepts 0 thru 4
+  # flip  Variant of the selected shade.  Accepts 0 or 1
+  @micropython.viper
+  def show_shade(self, s:int, flip:int ):
+    shades = ptr8(bytearray([ 0x00, 0x00, 0x44, 0x11, 0xaa, 0x55, 0xbb, 0xee, 0xff, 0xff ]))
+    i:int = s * 2
+    if flip == 0:
+      a:int = shades[ i ]
+      b:int = shades[ i + 1 ]
+    else:
+      a:int = shades[ i + 1 ]
+      b:int = shades[ i ]
+    i = 0
+    buf = ptr8(self.hal.mtx.bitmap)
+    while i < 16:
+      buf[i] = a
+      i += 1
+      buf[i] = b
+      i += 1
+    self.hal.mtx.matrix.show()
+  
+  # Responds to the play_wait_ani Event
+  # Programatically creates ani based on (minimal) hardcoded data
+  async def _wait_ani_runner(self):
     buf = self.hal.mtx.bitmap
     send = self.hal.mtx.matrix.show
     wait = asyncio.sleep_ms
@@ -580,48 +607,58 @@ class Gadget:
         send()
         f += 1
   
-  # Display a monotone shading to the matrix
-  # s     The shade to use.  Accepts 0 thru 4
-  # flip  Variant of the selected shade.  Accepts 0 or 1
-  @micropython.viper
-  def show_shade(self, s:int, flip:int ):
-    shades = ptr8(bytearray([ 0x00, 0x00, 0x44, 0x11, 0xaa, 0x55, 0xbb, 0xee, 0xff, 0xff ]))
-    i:int = s * 2
-    if flip == 0:
-      a:int = shades[ i ]
-      b:int = shades[ i + 1 ]
-    else:
-      a:int = shades[ i + 1 ]
-      b:int = shades[ i ]
-    i = 0
-    buf = ptr8(self.hal.mtx.bitmap)
-    while i < 16:
-      buf[i] = a
-      i += 1
-      buf[i] = b
-      i += 1
-    self.hal.mtx.matrix.show()
-  
-  # Full bitmap animation on the matrix
+  # Controls for _ani_runner()
   # a = bytes of length 16.f, where f is the number of frames
   # p = int ms to wait in between frames
-  async def ani(self, a:bytes, p:int=40):
+  def play_ani( self, a, p=40 ):
+    self._ani = a
+    self._ani_p = p
+    self._play_ani.set()
+  def stop_ani(self):
+    self._play_ani.clear()
+  
+  # Full bitmap animation on the matrix
+  # Control via play_ani() and stop_ani()
+  async def _ani_runner(self):
     buf = self.hal.mtx.bitmap
     send = self.hal.mtx.matrix.show
     wait = asyncio.sleep_ms
-    f:int = len(a)
-    i:int
-    j:int
+    ok = self._play_ani.is_set
     while True:
-      i = 0
-      while i < f:
-        j = 0
-        while j < 16:
-          buf[j] = a[ i+j ]
-          j += 1
-        send()
-        await wait(p)
-        i += 16
+      
+      # Do nothing until we get the signal
+      await self._play_ani.wait()
+      
+      # Update the data refs
+      a = self._ani
+      f = len(a)
+      p = self._ani_p
+      
+      # Run the ani
+      while True:
+        
+        # Not one more loop if authorisation is withdrawn
+        if not ok():
+          break
+        
+        # Initialise the loop
+        i = 0
+        while i < f:
+          
+          # Not one more frame if authorisation is withdrawn
+          if not ok():
+            break
+          
+          # Do the frame
+          j = 0
+          while j < 16:
+            buf[j] = a[ i+j ]
+            j += 1
+          send()
+          
+          # Get ready
+          i += 16
+          await wait(p)
   
   def needle_wander(self,w=True):
     if w:
@@ -686,6 +723,7 @@ ani_squares = bytes([
   0x00, 0x7e, 0x7e, 0x66, 0x66, 0x7e, 0x7e, 0x00, 0x00, 0x7e, 0x7e, 0x66, 0x66, 0x7e, 0x7e, 0x00,
   0x00, 0x00, 0x3c, 0x3c, 0x3c, 0x3c, 0x00, 0x00, 0xff, 0xff, 0xc3, 0xc3, 0xc3, 0xc3, 0xff, 0xff,
 ])
+''' Don't load this into memory if we're not going to use it
 ani_diag = bytes([
   128,  64,  32,  16,   8,   4,   2,   1,    128,  64,  32,  16,   8,   4,   2,   1,
    64,  32,  16,   8,   4,   2,   1, 128,     64,  32,  16,   8,   4,   2,   1, 128,
@@ -696,3 +734,4 @@ ani_diag = bytes([
     2,   1, 128,  64,  32,  16,   8,   4,      2,   1, 128,  64,  32,  16,   8,   4,
     1, 128,  64,  32,  16,   8,   4,   2,      1, 128,  64,  32,  16,   8,   4,   2,
 ])
+'''
