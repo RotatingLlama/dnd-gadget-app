@@ -2,11 +2,11 @@
 # Some original code in einktest.py
 #
 # T. Lloyd
-# 07 Nov 2025
+# 31 Jan 2026
 
 from micropython import const
 import asyncio
-from machine import RTC as _RTC
+from machine import deepsleep, RTC as _RTC
 from time import mktime, gmtime
 #from gc import collect as gc_collect
 
@@ -231,7 +231,21 @@ class HAL:
   def eink_clear_refresh(self):
     self._eink_action = 3
     self._update_eink.set()
-
+  
+  def poweroff(self):
+    
+    print('Powering off...')
+    print(' OLED')
+    self.oled.poweroff()
+    print(' Matrix')
+    self.mtx.power(0)
+    print(' Needle')
+    self.needle.position(0)
+    # Eink is always in deep sleep unless updating
+    
+    print(' CPU')
+    deepsleep()
+  
 # The object that hal.register() gives you
 class _ClientRegistration:
   def __init__(self, priority:int, features:tuple[str], callback=None, input_target=None, name:str='(anon)' ):

@@ -498,8 +498,8 @@ class Gadget:
     
     # Blank eink
     #t1 = time.ticks_ms()
-    et = asyncio.create_task( self._clear_eink_needle() )
     self.play_ani(ani_squares,100)
+    et = asyncio.create_task( self._clear_eink_needle() )
     
     # Wait message
     cr = self.hal.register(
@@ -520,12 +520,9 @@ class Gadget:
     await et
     #print( time.ticks_diff( time.ticks_ms(), t1 ))
     
-    # Turn out the lights
-    self.hal.oled.poweroff()
-    self.hal.mtx.power(0)
-    
     # Stop
-    self._exit_loop.set()
+    self.hal.poweroff()
+    #self._exit_loop.set()
   
   # Waits for the hw.py empty_battery event
   # Turns everything off
@@ -543,11 +540,6 @@ class Gadget:
     await eink.send()
     et = asyncio.create_task( eink.refresh() )
     
-    # Turn these off
-    self.hal.oled.poweroff()
-    self.hal.mtx.power(0)
-    self.hal.needle.position(0)
-    
     # Unmount SD
     if self._sd_is_mounted():
       vfs.umount( SD_ROOT )
@@ -556,7 +548,8 @@ class Gadget:
     await et
     
     # Stop
-    self._exit_loop.set()
+    self.hal.poweroff()
+    #self._exit_loop.set()
   
   # Display a monotone shading to the matrix
   # s     The shade to use.  Accepts 0 thru 4

@@ -33,7 +33,6 @@ TODO
 - System menu
   - Add a menu item to view errors that have been caught and logged
   - Add a menu item to take a screenshot
-- Improve the way the matrix animations work.  Viperise?
 - Way to skip character select screen and just go to last played
 - menu.py fast scrolling should trigger on more predictable intervals
   - eg. 40, 400, 4000 etc.
@@ -95,6 +94,7 @@ Invisible Changes
 -----------------
 * Now sets internal clock at startup based on most recent savefile time
 * Moved code out of gadget.py into new oledidle.py and ui.py
+* Shutting down now actually halts the CPU
 
 
 Gadget v0.3 - 01 Nov 2025
