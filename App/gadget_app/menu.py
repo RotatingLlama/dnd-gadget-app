@@ -2,7 +2,7 @@
 # For OLED and LED Matrix displays
 #
 # T. Lloyd
-# 21 Dec 2025
+# 31 Jan 2026
 
 from .common import DeferredTask
 
@@ -348,7 +348,7 @@ class _OledMenuItem:
       priority=self.prio,
       features=('input','oled',),
       input_target=lambda i:self._ih[i](),
-      callback=self._update,
+      callback=self._update, # type: ignore -- Class is never used directly; children set this
       name=self.title,
     )
   
@@ -494,7 +494,7 @@ class SimpleAdjuster(_OledMenuItem):
 
 # One adjustment affects two values
 class DoubleAdjuster( SimpleAdjuster ):
-  def __init__(self,parent,hal,prio,title,preview,get_cur,set_new,a='A',b='B',adj_rel=None,min_d=0,max_d=None,min_a=None,min_b=None,max_a=None,max_b=None):
+  def __init__(self,parent,hal,prio,title,preview,get_cur,set_new,a='A',b='B',adj_rel=None,min_d=lambda:0,max_d=None,min_a=None,min_b=None,max_a=None,max_b=None):
     self.accel = IncrementAccelerator( self.adj )
     ih = (
       self._leave, # back
