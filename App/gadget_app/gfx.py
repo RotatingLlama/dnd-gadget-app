@@ -1,7 +1,7 @@
 # Drawing functions
 #
 # T. Lloyd
-# 04 Jan 2026
+# 01 Feb 2026
 
 # Standard libraries
 import micropython
@@ -507,7 +507,10 @@ def draw_play_screen( fb, char, lowbatt=False ):
   # Character-specific background
   bg = char.dir / CHAR_BG
   if bg.is_file():
-    img.load_into( fb.buf, str(bg) )
+    try:
+      img.load_into( fb.buf, str(bg) )
+    except (RuntimeError, NotImplementedError) as e:
+      fb.fill(0)
   else:
     fb.fill(0)
   
@@ -516,10 +519,14 @@ def draw_play_screen( fb, char, lowbatt=False ):
     chs2 = _CHAR_HEAD_SIZE//2
     img.blit_onto( fb, _X-chs2, _HEAD_MIDPOINT_Y-chs2, _IMG_LOWBATT )
   else:
-    if head.is_file():
-      chs2 = _CHAR_HEAD_SIZE//2
-      img.blit_onto( fb, _X-chs2, _HEAD_MIDPOINT_Y-chs2, str( head ) )
-    else:
+    headok = head.is_file()
+    if headok:
+      try:
+        chs2 = _CHAR_HEAD_SIZE//2
+        img.blit_onto( fb, _X-chs2, _HEAD_MIDPOINT_Y-chs2, str( head ) )
+      except (RuntimeError, NotImplementedError) as e:
+        headok = False
+    if not headok:
       fb.rect( _X-1, _TIT_MIDPOINT_Y-1, 3, 3, 2, True ) # dot
       chs2 = 2
   
@@ -689,17 +696,24 @@ def draw_char_select( fb, chars ):
     
     # Is there a headshot?
     head = ( char.dir / CHAR_HEAD )
-    if head.is_file():
-      x = round( _X + _ARC2_RI*sin(a) -hdos )
-      y = round( _Y - _ARC2_RI*cos(a) -hdos )
-      img.blit_onto( fb, x, y, str(head) )
-    else:
+    headok = head.is_file()
+    if headok:
+      try:
+        x = round( _X + _ARC2_RI*sin(a) -hdos )
+        y = round( _Y - _ARC2_RI*cos(a) -hdos )
+        img.blit_onto( fb, x, y, str(head) )
+      except (RuntimeError, NotImplementedError) as e:
+        headok = False
+    
+    # If no head (that we can use)
+    if not headok:
       txt = char.stats['name'][:max_name_len]
       x = round( _X + _ARC2_RI*sin(a) - (len(txt)*4) )
       y = round( _Y - _ARC2_RI*cos(a) -4 )
       fb.rect(x-2, y-2, len(txt)*8 +4, 12, 2, False )
       fb.rect(x-1, y-1, len(txt)*8 +2, 10, 0, True )
       fb.text( txt, x,y, 1 )
+      
     a += da
   
   # We might have displayed fewer chars than we were given, so return the list we actually used
