@@ -12,18 +12,18 @@ tk.Tk().withdraw()
 # Get the image file to convert
 path = Path( askopenfilename() )
 
-pal = (
+pal = [
   (255,255,255), # 0 = White
   (  0,  0,  0), # 1 = Black
   (255,  0,  0), # 2 = Red
   (255,  0,255), # 3 = Magenta
-)
+]
 
 # What to do?
 if path.suffix == EXT:
-  out = libpi.decode( path, pal )
+  out = libpi.decode( str(path), pal )
 else:
-  out = libpi.encode( path, pal )
+  out = libpi.encode( str(path), pal )
 
 if out is not None:
   print('Saved to:',out)

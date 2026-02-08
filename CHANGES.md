@@ -63,6 +63,7 @@ TODO
   - Pixel arrangement for oled is *madness*.  Oled gfx assets are small, just img.load() them and use native fb.blit()
   - Maybe instead, just have a 'scratch' framebuffer that's used for all off-screen manipulation, to avoid ad-hoc memory allocation
 - Implement die()
+- Support images of arbitrary resolution (not just x8)
 - Support PNG???
   - https://github.com/remixer-dec/mpy-img-decoder/tree/master
   - Also https://github.com/Scondo/purepng
