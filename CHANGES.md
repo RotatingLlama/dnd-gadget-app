@@ -1,5 +1,8 @@
 TODO
 ====
+* Finish the arbitrary-width image support in img/libpy.pi
+  - Line 415 - fix the TODO.  Don't always apply padding.
+  - Actually test load() and load_into() with partial-byte images
 * Smaller NOSD logo for when there's no SD but that's ok
 * Combine 'charges' and other counters (gold, xp etc.)
   - 'reset' property is optional
@@ -63,7 +66,6 @@ TODO
   - Pixel arrangement for oled is *madness*.  Oled gfx assets are small, just img.load() them and use native fb.blit()
   - Maybe instead, just have a 'scratch' framebuffer that's used for all off-screen manipulation, to avoid ad-hoc memory allocation
 - Implement die()
-- Support images of arbitrary resolution (not just x8)
 - Support PNG???
   - https://github.com/remixer-dec/mpy-img-decoder/tree/master
   - Also https://github.com/Scondo/purepng
@@ -90,6 +92,7 @@ Visible Changes
 * In the character select screen, if nothing can be selected (eg. because SD was removed) the needle will wander randomly
 * When entering large numbers through the dial, increments now accelerate dynamically to speed up the process
 * Added bootup logo on oled, to hide spurious SD card errors that get shown while system is booting
+* PI images of arbitrary width (not just multiples of 4 or 8) now work as expected
 
 Invisible Changes
 -----------------

@@ -1,7 +1,7 @@
 # Functions for dealing with .pi files (formerly 2ink)
 #
 # T. Lloyd
-# 05 Oct 2025
+# 08 Feb 2026
 
 # Standard libs
 from struct import unpack, pack
@@ -20,6 +20,11 @@ def save_GS2_HMSB( fb, filename ):
   # Data will start at byte 8
   # width, height, bpp
   head = pack('>BBHHBB', 1, 8, fb.width, fb.height, fb.bpp, 0)
+  
+  # Sanity check on image width (whole number of bytes)
+  ppb = 8 // fb.bpp # Pixels per byte
+  if fb.width % ppb != 0:
+    raise RuntimeError('Framebuffer has odd width (not whole bytes)')
   
   # Rearrange the pixel order to suit 2ink format
   #if GS2_HLSB:
@@ -49,7 +54,6 @@ def load( filename ):
   # Check we know what we're doing
   if version > 1:
     raise RuntimeError('Unrecognised file format')
-    return
   
   # Data start pointer
   ds = top[1]
@@ -67,30 +71,32 @@ def load( filename ):
   head[0:2] = list(top)
   head[2:] = unpack( '>HHB', fd.read( 6 ) )
   
+  iwidth = head[2]
+  height = head[3]
+  
+  # Pixels per byte
+  ppb = 8 // head[4]
+  
+  # If the declared image width doesn't fit a whole number of bytes, assume it's been padded (with zeroes)
+  pad = -iwidth % ppb
+  dwidth = iwidth + pad
+  
   # Geometry validation
   # width and height values are guaranteed to be positive integers, because we've unpacked them as such
-  if head[2] == 0:
+  if iwidth == 0:
     raise RuntimeError('Attempted to load image with zero width!')
-    return
-  if head[3] == 0:
+  if height == 0:
     raise RuntimeError('Attempted to load image with zero height!')
-    return
-  ppb = 8 // head[4] # Pixels per byte
-  if head[2] % ppb != 0:
-    raise RuntimeError('Image width must be a whole number of bytes')
-    return
   if head[4] not in b2f:
     raise RuntimeError('Invalid number of bits per pixel!')
-    return
   
   # Currently only support 1 or 2 bpp
   if head[4] > 2:
     raise RuntimeError('Only 1 or 2 bits per pixel is supported')
-    return
   
   # Make the FB
-  buf = bytearray( head[2] * head[3] // ppb )
-  fb = framebuf.FB( buf, head[2], head[3], b2f[head[4]] )
+  buf = bytearray( dwidth * height // ppb )
+  fb = framebuf.FB( buf, dwidth, height, b2f[head[4]] )
   
   # Get the image data
   img_len = fd.readinto( buf )
@@ -109,6 +115,10 @@ def load( filename ):
     raise RuntimeError('File read error: unexpected length')
     return
   
+  # Do we have to blank out some padding?
+  if pad:
+    fb.rect( iwidth, 0, pad, height, 3 ) # Fill the pad area with transparency
+  
   return fb
 
 # Loads from file into provided buffer (bytearray)
@@ -126,7 +136,6 @@ def load_into( buf, filename ):
   # Check we know what we're doing
   if version > 1:
     raise RuntimeError('Unrecognised file format')
-    return
   
   # Data start pointer
   ds = top[1]
@@ -152,42 +161,41 @@ def load_into( buf, filename ):
   head[0:2] = list(top)
   head[2:5] = unpack( '>HHB', rest_of_head )
   
+  iwidth = head[2]
+  height = head[3]
+  
+  # Pixels per byte
+  ppb = 8 // head[4]
+  
+  # If the declared image width doesn't fit a whole number of bytes, assume it's been padded (with zeroes)
+  pad = -iwidth % ppb
+  dwidth = iwidth + pad
+  
   # Tidy up
   del rest_of_head, version, ds, fd, top
   
   # Check for file read errors
   if img_len is None:
     raise RuntimeError('Error reading file')
-    return
-  if img_len != ( head[2] * head[3] * head[4] ) // 8:
+  if img_len != ( dwidth * height // ppb ):
     raise RuntimeError('File read error: unexpected length')
-    return
   
   # Geometry validation
   # width and height values are guaranteed to be positive integers, because we've unpacked them as such
-  if head[2] == 0:
+  if iwidth == 0:
     raise RuntimeError('Attempted to load image with zero width!')
-    return
-  if head[3] == 0:
+  if height == 0:
     raise RuntimeError('Attempted to load image with zero height!')
-    return
-  ppb = 8 // head[4] # Pixels per byte
-  if head[2] % ppb != 0:
-    raise RuntimeError('Image width must be a whole number of bytes')
-    return
   if head[4] not in b2f:
     raise RuntimeError('Invalid number of bits per pixel!')
-    return
   
   # Currently only support 1 or 2 bpp
   if head[4] > 2:
     raise RuntimeError('Only 1 or 2 bits per pixel is supported')
-    return
     
   # Were we given a big enough buffer?
   if len(buf) < img_len:
     raise RuntimeError('Provided buffer was too small!')
-    return
   
   # Rearrange the pixel order to suit GS2_HMSB format
   #swap_pixel_order(buf)
@@ -196,12 +204,20 @@ def load_into( buf, filename ):
   if head[4] == 2:
     _replace_colour_2bpp( buf, 3, 0 )
   
-  return framebuf.FB(
+  # Construct the framebuffer object
+  fb = framebuf.FB(
     buf,
-    head[2], # width
-    head[3], # height
+    dwidth, # width
+    height, # height
     b2f[head[4]] # format
   )
+  
+  # Do we have to blank out some padding?
+  if pad:
+    fb.rect( iwidth, 0, pad, height, 3 ) # Fill the pad area with transparency
+  
+  return fb
+  
 
 # Takes a raw buffer, and optionally a pair of integer colours
 # Finds all instances of old colour and replaces it with new colour
@@ -294,18 +310,18 @@ def _blit_2bpp_onto_2bpp( fb, x:int, y:int, filename ):
   
   # Have to construct multi-byte integers manually because Viper doesn't understand endianness
   ds:int = head[1]
-  src_width:int = head[2]<<8 | head[3]
+  isrc_width:int = head[2]<<8 | head[3]
   src_height:int = head[4]<<8 | head[5]
   sbpp:int = head[6]
   
   # Geometry validation
   # width and height values are guaranteed to be positive integers, because we've unpacked them as such
-  if src_width == 0:
+  if isrc_width == 0:
     raise RuntimeError('Attempted to load image with zero width!')
   if src_height == 0:
     raise RuntimeError('Attempted to load image with zero height!')
-  if src_width % 8 != 0:
-    raise RuntimeError('Image width must be multiple of 8')
+  #if src_width % 8 != 0:
+  #  raise RuntimeError('Image width must be multiple of 8')
   #if sbpp not in b2f: # This check doesn't work in Viper - but is redundant due to (working) sbpp != 2 check below
   #  raise RuntimeError('Invalid number of bits per pixel!')
   
@@ -320,10 +336,19 @@ def _blit_2bpp_onto_2bpp( fb, x:int, y:int, filename ):
   src_startrow:int = int(max( 0, 0-y )) # Does the blitted image start offscreen?
   # src_endrow:int = int(min( src_height, dest_height - y )) # Does it end offscreen? # Not used
   sppb:int = 8 // sbpp # Source pixels per byte
+  
+  # If the declared image width doesn't fit a whole number of bytes, assume it's been padded (with zeroes)
+  src_pad:int = (0-isrc_width) % sppb
+  src_width:int = isrc_width + src_pad
+  print('isrc_width ',isrc_width)
+  print('pad ',src_pad)
+  print('src_width ',src_width)
+  
   src_bytewidth:int = src_width // sppb
   src_startbyte:int = int(max( 0, 0-x )) // sppb
-  src_endbyte:int = int(min( src_width, dest_width - x )) // sppb
+  src_endbyte:int = -( -int(min( isrc_width, dest_width - x )) // sppb )
   src_eff_width:int = src_endbyte - src_startbyte
+  print('src_eff_width ',src_eff_width)
   
   dest_startrow:int = int(max( 0, y ))
   dest_endrow:int = int(min( dest_height, y+src_height ))
@@ -332,7 +357,7 @@ def _blit_2bpp_onto_2bpp( fb, x:int, y:int, filename ):
   dest_startbyte:int = int(max( 0, x )) // dppb
   
   # Where in dest buffer do we end?  Trick with negatives produces correct values for partial-byte offsets
-  dest_endbyte:int = int(min( dest_bytewidth, -( -(x+src_width) // dppb ) ))
+  dest_endbyte:int = int(min( dest_bytewidth, -( -(x+isrc_width) // dppb ) ))
   
   # Within the start byte, which pixel do we start on?
   dest_pixeloffset:int = x % dppb
@@ -360,6 +385,10 @@ def _blit_2bpp_onto_2bpp( fb, x:int, y:int, filename ):
   p_bline = ptr8(bline)                        # Pointer to full buffer
   p_bline[src_eff_width] = 0xff                # Fill the extra byte with transparency
   
+  # Construct the padding
+  pad:int = 255 >> (src_pad*sbpp)
+  pad = ~pad
+  
   # Containers for in-loop byte data
   b = ptr8(bytearray(3))
   src:int = 0xffff
@@ -381,6 +410,12 @@ def _blit_2bpp_onto_2bpp( fb, x:int, y:int, filename ):
     fd.seek( fp )
     if int(fd.readinto( line )) < src_eff_width:
       raise RuntimeError('Image file was shorter than expected!')
+    
+    # Apply the padding to the current line
+    # TODO: This will always blank out a padding's-width of the last displayed byte
+    # ...whether that's the last byte of the source line, or not
+    # eg. if the source image is cut off by the rh edge of the dest fb
+    p_bline[src_eff_width-1] |= pad
     
     # Step through each (needed) byte in the current row of the output buffer
     i = 0
@@ -443,11 +478,14 @@ def _blit_2bpp_onto_2bpp( fb, x:int, y:int, filename ):
   # Done, finish up
   fd.close()
 
+# NOT CURRENTLY USED
+#
 # Blits image from file onto provided framebuffer
 # Positions top-left corner of file image at x, y
 # Transparency in file image is respected
 # Allocates working buffer equal to file image width +1
 # Assumes sane, sequential framebuffers like GS2_HMSB - does NOT work with eg. MONO_VLSB
+"""
 @micropython.viper
 def _blit_onto_any( fb, x:int, y:int, filename, t:int=-1 ):
   
@@ -816,3 +854,4 @@ def _blit_onto_any( fb, x:int, y:int, filename, t:int=-1 ):
   
   # Done, finish up
   fd.close()
+"""
