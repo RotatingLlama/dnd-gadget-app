@@ -1,8 +1,5 @@
 TODO
 ====
-* Finish the arbitrary-width image support in img/libpy.pi
-  - Line 415 - fix the TODO.  Don't always apply padding.
-  - Actually test load() and load_into() with partial-byte images
 * Smaller NOSD logo for when there's no SD but that's ok
 * Combine 'charges' and other counters (gold, xp etc.)
   - 'reset' property is optional

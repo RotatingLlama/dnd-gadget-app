@@ -1,13 +1,12 @@
 # Augments MicroPython's native framebuffer module
 # T. Lloyd
-# 29 Oct 2025
+# 09 Feb 2026
 #
 # Improves existing methods:
 # - hline
 # - vline
 #
 # TODO:
-# - Loosen requirement for width and height to both be divisible by eight?
 # - Implement fonts?
 
 from framebuf import FrameBuffer #, GS2_HMSB, GS4_HMSB, GS8, MONO_HLSB, MONO_HMSB, MONO_VLSB, MVLSB, RGB565
@@ -22,15 +21,10 @@ class FB(FrameBuffer):
       raise TypeError('width must be integer')
     if type(height) is not int:
       raise TypeError('height must be integer')
-    #
     if width <= 0:
       raise ValueError('width must be positive')
-    if width % 8 != 0:
-      raise ValueError('width must be multiple of 8')
     if height <= 0:
       raise ValueError('height must be positive')
-    if height % 8 != 0:
-      raise ValueError('height must be multiple of 8')
     
     if stride is None:
       stride = width
@@ -40,7 +34,12 @@ class FB(FrameBuffer):
     self.width = width
     self.height = height
     self.format = fmt
-    self.bpp = f2b[fmt]
+    self.bpp = f2b[fmt]      # Bits per pixel
+    self.ppb = 8 // self.bpp # Pixels per byte
+    
+    #
+    if width % self.ppb != 0:
+      raise ValueError('width must be a whole number of bytes')
     
     super().__init__(buf, width, height, fmt, stride)
   

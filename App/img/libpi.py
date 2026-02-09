@@ -1,7 +1,7 @@
 # Functions for dealing with .pi files (formerly 2ink)
 #
 # T. Lloyd
-# 08 Feb 2026
+# 09 Feb 2026
 
 # Standard libs
 from struct import unpack, pack
@@ -117,7 +117,7 @@ def load( filename ):
   
   # Do we have to blank out some padding?
   if pad:
-    fb.rect( iwidth, 0, pad, height, 3 ) # Fill the pad area with transparency
+    fb.rect( iwidth, 0, pad, height, 3, True ) # Fill the pad area with transparency
   
   return fb
 
@@ -214,7 +214,8 @@ def load_into( buf, filename ):
   
   # Do we have to blank out some padding?
   if pad:
-    fb.rect( iwidth, 0, pad, height, 3 ) # Fill the pad area with transparency
+    # Fill the pad area with zeroes (load_into doesn't do transparency)
+    fb.rect( iwidth, 0, pad, height, 0, True )
   
   return fb
   
@@ -267,14 +268,6 @@ def blit_onto( fb, x:int, y:int, filename, t=3 ):
   _blit_2bpp_onto_2bpp( fb, x, y, filename )
   #_blit_onto_any( fb, x, y, filename, t )
 
-# We can define these as const because we only accept bpp = 2
-# bits per pixel
-#sbpp = const(2)
-#dbpp = const(2)
-# Pixels per byte ( 8 // bpp )
-#sppb = const(4)
-#dppb = const(4)
-
 # Blits image from file onto provided framebuffer
 # Positions top-left corner of file image at x, y
 # Transparency in file image is respected
@@ -310,7 +303,7 @@ def _blit_2bpp_onto_2bpp( fb, x:int, y:int, filename ):
   
   # Have to construct multi-byte integers manually because Viper doesn't understand endianness
   ds:int = head[1]
-  isrc_width:int = head[2]<<8 | head[3]
+  isrc_width:int = head[2]<<8 | head[3] # Image width, as declared in head
   src_height:int = head[4]<<8 | head[5]
   sbpp:int = head[6]
   
@@ -320,14 +313,11 @@ def _blit_2bpp_onto_2bpp( fb, x:int, y:int, filename ):
     raise RuntimeError('Attempted to load image with zero width!')
   if src_height == 0:
     raise RuntimeError('Attempted to load image with zero height!')
-  #if src_width % 8 != 0:
-  #  raise RuntimeError('Image width must be multiple of 8')
   #if sbpp not in b2f: # This check doesn't work in Viper - but is redundant due to (working) sbpp != 2 check below
   #  raise RuntimeError('Invalid number of bits per pixel!')
   
   # Currently only support 2bpp
   if sbpp != 2:
-  #if head[6] != 2:
     raise NotImplementedError('Only 2 bits per pixel is supported')
   
   # Source start/end positions (in case parts of it end up offscreen)
@@ -339,16 +329,11 @@ def _blit_2bpp_onto_2bpp( fb, x:int, y:int, filename ):
   
   # If the declared image width doesn't fit a whole number of bytes, assume it's been padded (with zeroes)
   src_pad:int = (0-isrc_width) % sppb
-  src_width:int = isrc_width + src_pad
-  print('isrc_width ',isrc_width)
-  print('pad ',src_pad)
-  print('src_width ',src_width)
-  
+  src_width:int = isrc_width + src_pad # Width of source data, including any padding that may have been needed
   src_bytewidth:int = src_width // sppb
   src_startbyte:int = int(max( 0, 0-x )) // sppb
   src_endbyte:int = -( -int(min( isrc_width, dest_width - x )) // sppb )
   src_eff_width:int = src_endbyte - src_startbyte
-  print('src_eff_width ',src_eff_width)
   
   dest_startrow:int = int(max( 0, y ))
   dest_endrow:int = int(min( dest_height, y+src_height ))
@@ -385,9 +370,14 @@ def _blit_2bpp_onto_2bpp( fb, x:int, y:int, filename ):
   p_bline = ptr8(bline)                        # Pointer to full buffer
   p_bline[src_eff_width] = 0xff                # Fill the extra byte with transparency
   
-  # Construct the padding
-  pad:int = 255 >> (src_pad*sbpp)
-  pad = ~pad
+  # Do we need to blank out the padding?
+  pad:int
+  if src_endbyte == -( -isrc_width // sppb ): # yes
+    # Construct the padding
+    pad = 0xff >> (src_pad*sbpp)
+    pad = ~pad
+  else: # no
+    pad = 0 # will do nothing when OR'd later
   
   # Containers for in-loop byte data
   b = ptr8(bytearray(3))
@@ -412,9 +402,6 @@ def _blit_2bpp_onto_2bpp( fb, x:int, y:int, filename ):
       raise RuntimeError('Image file was shorter than expected!')
     
     # Apply the padding to the current line
-    # TODO: This will always blank out a padding's-width of the last displayed byte
-    # ...whether that's the last byte of the source line, or not
-    # eg. if the source image is cut off by the rh edge of the dest fb
     p_bline[src_eff_width-1] |= pad
     
     # Step through each (needed) byte in the current row of the output buffer
