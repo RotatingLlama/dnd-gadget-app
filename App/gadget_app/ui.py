@@ -2,7 +2,7 @@
 # Consider as part of gadget.py
 #
 # T. Lloyd
-# 31 Jan 2026
+# 14 Feb 2026
 
 from micropython import const
 
@@ -164,6 +164,14 @@ def play_menus(self):
       title='Copper',
       get_cur=lambda: char.stats['copper'],
       set_abs=char.set_copper
+    )
+  )
+  smi.append(
+    menu.SimpleAdjuster( smm, self.hal,
+      prio=HAL_PRIORITY_MENU+3,
+      title='Platinum',
+      get_cur=lambda: char.stats['platinum'],
+      set_abs=char.set_platinum
     )
   )
   smi.append(

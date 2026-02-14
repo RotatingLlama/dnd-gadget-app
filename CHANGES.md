@@ -1,7 +1,6 @@
 TODO
 ====
-* System menu > Switch character doesn't work
-* platinum
+* System menu > Switch character doesn't always work properly
 * Death saves
 * Smaller NOSD logo for when there's no SD but that's ok
 * Combine 'charges' and other counters (gold, xp etc.)
@@ -78,6 +77,7 @@ Gameplay Changes & Bugfixes
 ---------------------------
 * Added support for items that reset at dawn (as opposed to long rest, etc.)
 * Fixed divide by zero errors when only one character is available to pick
+* Added support for tracking Platinum (in the Currency menu)
 
 Visible Changes
 ---------------

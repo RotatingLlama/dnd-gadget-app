@@ -92,6 +92,7 @@ PARAMS = {
   'silver'  : [None, lambda v: val_zpint(v,'Silver'),  int,        0],
   'copper'  : [None, lambda v: val_zpint(v,'Copper'),  int,        0],
   'electrum': [None, lambda v: val_zpint(v,'Electrum'),int,        0],
+  'platinum': [None, lambda v: val_zpint(v,'Platinum'),int,        0],
 }
 
 # hal: The HAL object from hal.py
@@ -664,6 +665,9 @@ class Character:
     self.save()
   def set_electrum(self,x):
     self.stats['electrum'] = x
+    self.save()
+  def set_platinum(self,x):
+    self.stats['platinum'] = x
     self.save()
   
   # Sets the needle to the current HP
