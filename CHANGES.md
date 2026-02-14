@@ -1,5 +1,8 @@
 TODO
 ====
+* System menu > Switch character doesn't work
+* platinum
+* Death saves
 * Smaller NOSD logo for when there's no SD but that's ok
 * Combine 'charges' and other counters (gold, xp etc.)
   - 'reset' property is optional
@@ -96,6 +99,7 @@ Invisible Changes
 * Now sets internal clock at startup based on most recent savefile time
 * Moved code out of gadget.py into new oledidle.py and ui.py
 * Shutting down now actually halts the CPU
+* No need to specify everything in a new character savefile.  Non-mandatory items will now take safe default values
 
 
 Gadget v0.3 - 01 Nov 2025

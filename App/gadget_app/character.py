@@ -1,7 +1,7 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 22 Dec 2025
+# 14 Feb 2026
 
 #import asyncio
 import os
@@ -51,14 +51,19 @@ def val_str(s,t):
   if len(s) == 0:
     return 'Empty '+t
 
+# Check a string: correct type
+def val_zstr(s,t):
+  if type(s) is not str:
+    return 'Bad '+t
+
 # Check an integer: correct type and > 0
-def val_pint(v,t):
-  try:
-    v = int(v)
-  except ValueError:
-    return t+' must be integer'
-  if v <= 0:
-    return t+' must be > 0'
+#def val_pint(v,t):
+#  try:
+#    v = int(v)
+#  except ValueError:
+#    return t+' must be integer'
+#  if v <= 0:
+#    return t+' must be > 0'
 
 # Check an integer: correct type and >= 0
 def val_zpint(v,t):
@@ -69,84 +74,6 @@ def val_zpint(v,t):
   if v < 0:
     return t+' must be >= 0'
 
-# Checks the triplet of HP values
-#def val_hp(c,m,t):
-#  
-#  # Check we have a full complement
-#  if c is None:
-#    return 'Missing hp_current'
-#  if m is None:
-#    return 'Missing hp_max'
-#  if t is None:
-#    return 'Missing hp_temp'
-#  
-#  # Check all the values are ok
-#  e = val_zpint(c,'Current HP')
-#  if e:
-#    return e
-#  e = val_pint(m,'Max HP')
-#  if e:
-#    return e
-#  e = val_zpint(t,'Temp HP')
-#  if e:
-#    return e
-#  
-#  if int(c) > int(m):
-#    return 'HP is more than max'
-
-# Checks the hit dice values
-# STILL NEEDED?
-#def val_hd(c,m):
-#  
-#  # Check we have a full complement
-#  if c is None:
-#    return 'Missing hd_current'
-#  if m is None:
-#    return 'Missing hd_max'
-#  
-#  # Check the values are ok
-#  e = val_zpint(c,'Current HD')
-#  if e:
-#    return e
-#  e = val_pint(m,'Max HD')
-#  if e:
-#    return e
-#  
-#  if int(c) > int(m):
-#    return 'Hit dice are more than max'
-
-# Checks a pair if Spell values
-#def val_spell(c,m,i):
-#  e = val_zpint(c,f'Spell slot {i}')
-#  if e:
-#    return e
-#  e = val_pint(m,f'Spell max {i}')
-#  if e:
-#    return e
-#  
-#  if int(c) > int(m):
-#    return f'Spell slots {i} > max'
-
-# Checks a quad of Charge values
-#def val_charge(name,curr,max,reset,i):
-#  e = val_str(name, f'Item {i} name')
-#  if e:
-#    return e
-#  e = val_zpint(curr,f'Item {i} charges')
-#  if e:
-#    return e
-#  e = val_pint(max,f'Item {i} max')
-#  if e:
-#    return e
-#  # val_str() isn't useful for checking reset value
-#  
-#  if int(curr) > int(max):
-#    return f'Item {i} charges > max'
-#  
-#  for r in reset:
-#    if r not in ( 'lr', 'sr', 'dawn' ):
-#      return f'Item {i} invalid reset'
-
 # Individual params.  HP, Spells and Charges are treated differently.
 # load() will check:
 # 1. Does the parameter name in the file match an entry here?
@@ -155,15 +82,16 @@ def val_zpint(v,t):
 # 4. Store it here
 # 5. Later, load from here into main stats dictionary
 # Complex parameters (HP, spells/charges, hit dice) are dealt with separately.
-# [ value, validation function, conversion function ]
+# If default value is None, param is mandatory
+# [ value, validation function, conversion function, default value ]
 PARAMS = {
-  'name'    : [None, lambda s: val_str(s,'name'),      lambda x:x],
-  'title'   : [None, lambda s: val_str(s,'title'),     lambda x:x],
-  'xp'      : [None, lambda v: val_zpint(v,'XP'),      int],
-  'gold'    : [None, lambda v: val_zpint(v,'Gold'),    int],
-  'silver'  : [None, lambda v: val_zpint(v,'Silver'),  int],
-  'copper'  : [None, lambda v: val_zpint(v,'Copper'),  int],
-  'electrum': [None, lambda v: val_zpint(v,'Electrum'),int],
+  'name'    : [None, lambda s: val_str(s,'name'),      lambda x:x, None],
+  'title'   : [None, lambda s: val_zstr(s,'title'),    lambda x:x, ''],
+  'xp'      : [None, lambda v: val_zpint(v,'XP'),      int,        0],
+  'gold'    : [None, lambda v: val_zpint(v,'Gold'),    int,        0],
+  'silver'  : [None, lambda v: val_zpint(v,'Silver'),  int,        0],
+  'copper'  : [None, lambda v: val_zpint(v,'Copper'),  int,        0],
+  'electrum': [None, lambda v: val_zpint(v,'Electrum'),int,        0],
 }
 
 # hal: The HAL object from hal.py
@@ -350,7 +278,7 @@ class Character:
       p[0] = None
       
       # Try to get the value
-      v = fs.get( k )
+      v = fs.get( k, p[3] )
       if v is None:
         raise CharacterError( f'Missing {k}' )
       
@@ -403,9 +331,7 @@ class Character:
       raise CharacterError('Invalid temporary hp')
     
     # Get and validate spells
-    spf = fs.get( 'spells' )
-    if spf is None:
-      raise CharacterError('Missing spell slots')
+    spf = fs.get( 'spells', [] )
     if type(spf) is not list:
       raise CharacterError('Invalid spell slots list')
     sp = [None] * min( _MAX_SPELLS, len(spf) )
@@ -413,18 +339,18 @@ class Character:
       if type(s) is not dict:
         raise CharacterError( f'Bad spell slot #{i+1}' )
       try:
-        sp[i] = [ int( s.get('current') ), int( s.get('max') ) ]
+        sp[i] = [ int( s.get('current',-1) ), int( s.get('max') ) ]
       except ( ValueError, TypeError ) as e:
         raise CharacterError( f'Bad spell slot #{i+1}' )
-      if sp[i][1] <= 0:
+      if sp[i][1] <= 0: # max
         raise CharacterError( f'Bad spell slot #{i+1}' )
+      if sp[i][0] == -1: # Wasn't specified
+        sp[i][0] = sp[i][1] # Start at full (max)
       if not ( 0 <= sp[i][0] <= sp[i][1] ):
         raise CharacterError( f'Bad spell slot #{i+1}' )
     
     # Get and validate charges
-    chf = fs.get('charges')
-    if chf is None:
-      raise CharacterError( 'Missing charges' )
+    chf = fs.get( 'charges', [] )
     if type(chf) is not list:
       raise CharacterError( 'Invalid charges list' )
     ch = [None] * min( _MAX_CHARGES, len(chf) )
@@ -434,7 +360,7 @@ class Character:
       try:
         ch[i] = {
           'name' : str( c.get('name') )[:_CHG_NAME_MAXLEN],
-          'curr' : int( c.get('current') ),
+          'curr' : int( c.get('current',-1) ),
           'max'  : int( c.get('max') ),
           'reset' : [],
         }
@@ -442,11 +368,11 @@ class Character:
         raise CharacterError( f'Bad charge #{i+1}' )
       if ch[i]['max'] <= 0:
         raise CharacterError( f'Bad charge #{i+1}' )
+      if ch[i]['curr'] == -1: # Wasn't specified
+        ch[i]['curr'] = ch[i]['max'] # Start at full (max)
       if not ( 0 <= ch[i]['curr'] <= ch[i]['max'] ):
         raise CharacterError( f'Bad charge #{i+1}' )
-      rst = c.get('reset')
-      if rst is None:
-        raise CharacterError( f'Charge #{i+1} has missing reset' )
+      rst = c.get( 'reset', [] )
       if type(rst) is not list:
         raise CharacterError( f'Charge #{i+1} has invalid reset' )
       for r in rst:
