@@ -1,7 +1,9 @@
 TODO
 ====
 * System menu > Switch character doesn't always work properly
-* Death saves
+* Death saves:
+  - Function to set up menus for saves.  Prob need new operating mode for this
+  - Ditto for dead.  Options to restore at 1 HP, or restore and full HP.
 * Smaller NOSD logo for when there's no SD but that's ok
 * Combine 'charges' and other counters (gold, xp etc.)
   - 'max' property is optional

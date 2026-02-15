@@ -114,12 +114,13 @@ class Character:
     
     # Stats
     # This will get populated during load() with all the simple PARAMS (above) so they don't need to be defined here
-    # But hp/hd/spell/cherge structures need to pre-exist
+    # But hp/hd/spell/cherge/death structures need to pre-exist
     self.stats = {
       'hp' : [0,0,0,0], # Current, max, temp, orig_temp
       'hd' : [0,0], # Current, max
       'spells' : [],
       'charges' : [],
+      'death' : {},
     }
     
     # Whenever anything updates self.stats, it also calls self.save()
@@ -151,6 +152,7 @@ class Character:
         'max'     : c['max'],
         'reset'   : c['reset']
         } for c in s['charges'] ],
+      'death' : s['death'],
     })
     
     try:
@@ -380,6 +382,25 @@ class Character:
         if r in ( 'lr', 'sr', 'dawn' ):
           ch[i]['reset'].append( r )
     
+    # Get and validate death
+    df = fs.get( 'death', {} )
+    if type(df) is not dict:
+      raise CharacterError( 'Invalid death section' )
+    try:
+      d = {
+        'status' : str( df.get('status','stable') ),
+        'successes' : int( df.get('successes',0) ),
+        'failures' : int( df.get('failures',0) ),
+      }
+    except ( ValueError, TypeError ) as e:
+      raise CharacterError( 'Invalid death section' )
+    if d['status'] not in ('stable','saves','dead'):
+      raise CharacterError( 'Invalid death status' )
+    if not 0<= d['successes'] <= 3:
+      raise CharacterError( 'Invalid number of successful death saves' )
+    if not 0<= d['failures'] <= 3:
+      raise CharacterError( 'Invalid number of failed death saves' )
+    
     # Assemble
     self.stats = { k: PARAMS[k][0] for k in PARAMS }
     self.stats.update({
@@ -387,6 +408,7 @@ class Character:
       'hp' : hp,
       'spells' : sp,
       'charges' : ch,
+      'death' : d,
     })
   
   # DOES NOT VALIDATE hit dice
@@ -485,6 +507,9 @@ class Character:
     if hp[0] > hp[1]:
       hp[0] = hp[1]
     
+    # Ensure we're not doing death saves now
+    self.stats['death']['status'] = 'stable'
+    
     self.save()
     
     if hp[2] > 0:
@@ -537,7 +562,12 @@ class Character:
     
     # Is the overdamage >= max HP?
     if od >= hp[1]:
-      self.die()
+      self.die(show=show)
+      return
+    
+    # Do we need to enter eath saves?
+    if hp[0] == 0:
+      self.stats['death']['status'] = 'saves'
     
     self.save()
     
@@ -548,10 +578,6 @@ class Character:
     if show:
       # Update the needle
       self.show_curr_hp()
-  
-  # Do something when the character actually dies (not just knocked out)
-  def die(self):
-    pass
   
   # Sets the current temporary hit points
   # DOES validate
@@ -581,6 +607,16 @@ class Character:
       
     if show:
       self.show_curr_hp()
+  
+  def stabilise(self):
+    self.stats['death']['status'] = 'stable'
+    self.save()
+  
+  # Character actually dies
+  def die(self, show=True ):
+    self.stats['death']['status'] = 'dead'
+    self.save()
+    self.draw_eink( show=show )
   
   # Sets the max hit points
   # DOES validate
