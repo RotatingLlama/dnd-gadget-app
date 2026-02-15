@@ -2,7 +2,7 @@
 # Consider as part of gadget.py
 #
 # T. Lloyd
-# 14 Feb 2026
+# 15 Feb 2026
 
 from micropython import const
 
@@ -147,7 +147,7 @@ def play_menus(self):
       prio=HAL_PRIORITY_MENU+3,
       title='Gold',
       get_cur=lambda: char.stats['gold'],
-      set_abs=char.set_gold
+      set_abs=lambda x : char.set_numeric_item( 'gold', x )
     )
   )
   smi.append(
@@ -155,7 +155,7 @@ def play_menus(self):
       prio=HAL_PRIORITY_MENU+3,
       title='Silver',
       get_cur=lambda: char.stats['silver'],
-      set_abs=char.set_silver
+      set_abs=lambda x : char.set_numeric_item( 'silver', x )
     )
   )
   smi.append(
@@ -163,7 +163,7 @@ def play_menus(self):
       prio=HAL_PRIORITY_MENU+3,
       title='Copper',
       get_cur=lambda: char.stats['copper'],
-      set_abs=char.set_copper
+      set_abs=lambda x : char.set_numeric_item( 'copper', x )
     )
   )
   smi.append(
@@ -171,7 +171,7 @@ def play_menus(self):
       prio=HAL_PRIORITY_MENU+3,
       title='Platinum',
       get_cur=lambda: char.stats['platinum'],
-      set_abs=char.set_platinum
+      set_abs=lambda x : char.set_numeric_item( 'platinum', x )
     )
   )
   smi.append(
@@ -179,7 +179,7 @@ def play_menus(self):
       prio=HAL_PRIORITY_MENU+3,
       title='Electrum',
       get_cur=lambda: char.stats['electrum'],
-      set_abs=char.set_electrum
+      set_abs=lambda x : char.set_numeric_item( 'electrum', x )
     )
   )
   
@@ -241,7 +241,7 @@ def play_menus(self):
       prio=HAL_PRIORITY_MENU+2,
       title='XP',
       get_cur=lambda: char.stats['xp'],
-      set_abs=char.set_xp
+      set_abs=lambda x : char.set_numeric_item( 'xp', x )
     )
   )
   

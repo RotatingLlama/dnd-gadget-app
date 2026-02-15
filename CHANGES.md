@@ -4,7 +4,6 @@ TODO
 * Death saves
 * Smaller NOSD logo for when there's no SD but that's ok
 * Combine 'charges' and other counters (gold, xp etc.)
-  - 'reset' property is optional
   - 'max' property is optional
   - Assume zero minimum
   - Can appear on matrix if 'max' is present, and 6 or less

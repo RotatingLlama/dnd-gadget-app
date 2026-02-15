@@ -1,7 +1,7 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 14 Feb 2026
+# 15 Feb 2026
 
 #import asyncio
 import os
@@ -649,25 +649,10 @@ class Character:
     self.save()
     self.draw_mtx(show=show)
   
-  # Helper functions for these numeric-only things
-  # These do NOT validate
-  def set_xp(self,x):
-    self.stats['xp'] = x
-    self.save()
-  def set_gold(self,x):
-    self.stats['gold'] = x
-    self.save()
-  def set_silver(self,x):
-    self.stats['silver'] = x
-    self.save()
-  def set_copper(self,x):
-    self.stats['copper'] = x
-    self.save()
-  def set_electrum(self,x):
-    self.stats['electrum'] = x
-    self.save()
-  def set_platinum(self,x):
-    self.stats['platinum'] = x
+  # Helper function for these numeric-only things
+  # Does NOT validate
+  def set_numeric_item(self, k, v ):
+    self.stats[k] = v
     self.save()
   
   # Sets the needle to the current HP
