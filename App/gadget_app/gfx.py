@@ -1,7 +1,7 @@
 # Drawing functions
 #
 # T. Lloyd
-# 01 Feb 2026
+# 15 Feb 2026
 
 # Standard libraries
 import micropython
@@ -537,7 +537,8 @@ def draw_play_screen( fb, char, lowbatt=False ):
   #f = eink.Font('/assets/Vermin.2f')
   #f.write_to( fb, 'L3 Artificer', XY[0], XY[1]+14, (2,) )
   fb.label( stats['name'], _X - (chs2+(len(stats['name']) * 8)+5), _TIT_MIDPOINT_Y-4, 1 )
-  fb.label( stats['title'], _X + chs2 + 5, _TIT_MIDPOINT_Y-4, 1 )
+  if len( stats['title'] ) > 0:
+    fb.label( stats['title'], _X + chs2 + 5, _TIT_MIDPOINT_Y-4, 1 )
   
   ######## SPELLS BAR ########
   
