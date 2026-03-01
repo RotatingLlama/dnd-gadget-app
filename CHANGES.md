@@ -1,10 +1,28 @@
 TODO
 ====
-* System menu > Switch character doesn't always work properly
 * Death saves:
   - Function to set up menus for saves.  Prob need new operating mode for this
-  - Ditto for dead.  Options to restore at 1 HP, or restore and full HP.
-* Smaller NOSD logo for when there's no SD but that's ok
+    - Successes ....-> stablise at zero
+    - Failures ....-> Transition to Dead
+    - Stabilise at zero
+    - Stabilise by healing
+  - Ditto for dead.  Options to restore at 1 HP, or restore at full HP.
+    - "This character is dead"
+    - return to select character screen
+    - Restore at 1 hp
+    - Restore at full hp
+  - Implement state machine
+    - 2 levels:
+      - Choose character
+      - Play screen
+        - Stable (normal play)
+        - Death saves
+        - Dead
+    - Each state has setup and destroy functions, bound to common reference points
+    - Make explicit when a function is a setup function
+    - Setup functions for a state at a given level are responsible for calling the destroy function
+    - Destroy functions for an upper level are responsible for calling the destroy function for the level below them
+    - Setup function for a level that has sub-levels is responsible for calling the setup function for the default/appropriate sublevel
 * Combine 'charges' and other counters (gold, xp etc.)
   - 'max' property is optional
   - Assume zero minimum
@@ -16,16 +34,18 @@ TODO
   - Rationalise character load-in and matrix geometry calculation:
     - Both of these have opinions about how many charges are permissible
     - These opinions should always match, or better yet come from the same source
+- Prompt to add health after spending hit dice on short rest
 - Add ability to adjust max HP during play
   - Store original max hp
   - Record new max hp - absolute or relative?
-  - What do do with current hp when max increases or decreases?
+  - Existing HP is not affected by max hp change except for getting clamped.  Health is conserved quantity, not damage.
   - What to do with existing code that looks at max hp?
 - Allow save files to specify what ruleset applies to them
   - 2014, 2024, pathfinder, etc
   - make _play_screen() in gadget.py selectable (different rulesets will need different menu options)
   - make Character class in character.py selectable (different rulesets will need different character behaviour and save options)
   - everything else should be agnostic to this
+* Smaller NOSD logo for when there's no SD but that's ok
 * Fonts
   - https://github.com/peterhinch/micropython-font-to-py
   - https://github.com/easytarget/microPyEZfonts
@@ -47,6 +67,7 @@ TODO
     - Tuple would need to be dynamically generated (eg. max hp varies with temp hp)
     - But tuple can be requested as soon as IA goes out of 'reset' state
     - Safe to assume it won't change during the adjustment (just maybe as a consequence of it)
+- System menu > Switch character doesn't always work properly
 - Something calls power_off() in gadget.py when the SD is replugged (but only sometimes!)  What does this?
 - OLED menu and idle screen can draw simultaneously on rare occasions.  Fix this
   - Both SimpleAdjuster.render_title() and _oled_idle_render() call oled.fill(0) before doing anything, so this shouldn't happen

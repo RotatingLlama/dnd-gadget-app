@@ -2,7 +2,7 @@
 # For Micropython v1.26
 #
 # T. Lloyd
-# 31 Jan 2026
+# 01 Mar 2026
 
 
 # TO USE:
@@ -255,26 +255,21 @@ class Gadget:
     # Oled idle stuff
     oled_idle = OledIdle( gadget=self, refresh_ms=_OLED_IDLE_REFRESH )
     
-    # Gets called once the SD card is a known state (good or bad)
-    # If good, load characters as normal
-    # If bad, load whatever character may be in internal storage
-    # Will lead to blank selector if nothing there
-    # Character select screen reloads when a valid card with valid character files appears
-    def finish_startup():
-      self.show_shade(2,1)
-      self._show_splash = False
-      print('Startup complete.')
-      self.select_character()
-    
-    # Wait until the card is either ready, or definitely not ready
+    # Wait until the card is either physically ready (init succeeded), or definitely not ready (absent or faulty)
     await self.hal.sd.card_state_known.wait()
-    if not self.hal.sd.card_ready.is_set():
-      finish_startup()
-    else: # Card is present and we're still processing
-      
-      # Wait for the mount to either pass/fail
+    
+    # If the card is physically ready, wait for the mount to either pass/fail
+    if self.hal.sd.card_ready.is_set():
       await self._sd_mount_attempted.wait()
-      finish_startup()
+    
+    # The card is now either fully mounted and good to go, or it's absent or faulty.
+    # Either way we have a known, settled state and we can proceed
+    self.show_shade(2,1)
+    self._show_splash = False
+    print('Startup complete.')
+    
+    # Set up the character select screen
+    self.select_character()
     
     await self._exit_loop.wait()
     print('Exiting.  Adios!')
