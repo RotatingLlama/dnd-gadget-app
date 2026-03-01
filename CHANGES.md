@@ -35,6 +35,7 @@ TODO
     - Both of these have opinions about how many charges are permissible
     - These opinions should always match, or better yet come from the same source
 - Prompt to add health after spending hit dice on short rest
+- hw.py: Make 'low battery' threshold a round percentage instead of a voltage value
 - Add ability to adjust max HP during play
   - Store original max hp
   - Record new max hp - absolute or relative?

@@ -32,7 +32,7 @@ from . import menu
 from .hal import HAL
 from .character import Character, CharacterError
 from .oledidle import OledIdle
-from .ui import play_menus
+from ._ui import play_menus
 from . import gfx
 
 _DEBUG_DISABLE_EINK = const(False)
@@ -150,10 +150,14 @@ class Gadget:
       
     return chars
   
-  # Sets up the selector
+  # Sets up the character select screen
   def select_character(self):
     
     self.cleanup()
+    
+    # Sanity check (did cleanup() do its job?)
+    if self.character is not None:
+      raise RuntimeError('Attempted to set character while character was already set!')
     
     # Loading screen
     self.play_wait_ani.set()
@@ -167,9 +171,23 @@ class Gadget:
       self.hal.eink_send_refresh()
     #print(chars)
     
+    # Gets called when the button is pressed, gets passed a numeric index
+    def choose( i:int ):
+      
+      # Ignore call if the character's directory has gone away
+      if not chars[i].dir.is_dir():
+        return
+      
+      # Set the character
+      self.character = chars[i]
+      print( self.character.stats )
+      
+      # Launch the play screen constructor
+      self.play_screen()
+    
     # If we have *no* characters, don't try to index into an empty list
     if len(chars) > 0:
-      btn = lambda i: self._set_char( chars[i] )
+      btn = choose
     else:
       btn = lambda i: None
       self.needle_wander(True)
@@ -183,18 +201,6 @@ class Gadget:
       back = lambda x: self.power_off() # lambda x: self.hal.needle.wobble() # self.hal.hw.empty_battery.set()
     )
     
-    # If the SD card is unplugged, wiggle the needle to indicate
-    # self._set_char() will exit silently if it's triggered with no SD card in place
-    def unplug():
-      self.needle_wander(True)
-    
-    # If the SD card is replugged
-    # Clean up this character picker instance and then start a new one
-    # (because the newly-plugged card may well have different char data)
-    def plug():
-      self.needle_wander(False)
-      self.select_character()
-    
     # Function to clean up this character picker instance
     def end():
       self.needle_wander(False)
@@ -205,34 +211,34 @@ class Gadget:
       self.sd_plug = lambda : None
       self.sd_unplug = lambda : None
     
-    # Set these hooks
+    # If the SD card is unplugged, wiggle the needle to indicate
+    # self._set_char() will exit silently if it's triggered with no SD card in place
+    self.sd_unplug = lambda : self.needle_wander(True)
+    
+    # If the SD card is replugged
+    # Call select_character() again (which will destroy this instance and create a new one)
+    # Needed because the newly-plugged card may well have different char data
+    self.sd_plug = self.select_character
+    
+    # Register the destructor
     self.cleanup = end
-    self.sd_plug = plug
-    self.sd_unplug = unplug
   
-  # Gets called when a character is chosen
-  # Calls the char select screen destructor
-  # Sets things up for play, using the provided Character object
-  def _set_char(self, char ):
+  # Sets up the play screen
+  # (most of the setup code has been exported to _ui.py)
+  def play_screen(self):
     
-    # Ignore call if the character's directory has gone away
-    if not char.dir.is_dir():
-      return
+    if self.character is None:
+      raise RuntimeError('Tried to enter play screen with no character set')
     
-    # Clean up the char select screen
+    # Clean up the previous stuff
     self.cleanup()
     
-    # Set it up
-    self.character = char
-    print( char.stats )
-    gc.collect()
-    
+    # Eink and needle
     if not _DEBUG_DISABLE_EINK:
-      char.draw_eink()
-    #char.draw_mtx() # This is handled automatically by the matrix idle CR
-    char.show_curr_hp()
+      self.character.draw_eink()
+    self.character.show_curr_hp()
     
-    # Set up the matrix and oled menus (ui.py)
+    # Matrix, oled menus (_ui.py) and destructor
     self.menu, self.cleanup = play_menus(self)
   
   # Start everything, keep refs to looping tasks
