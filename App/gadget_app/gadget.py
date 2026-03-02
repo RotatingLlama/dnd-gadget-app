@@ -2,7 +2,7 @@
 # For Micropython v1.26
 #
 # T. Lloyd
-# 01 Mar 2026
+# 02 Mar 2026
 
 
 # TO USE:
@@ -27,12 +27,12 @@ from os import urandom
 from .pathlib import Path
 
 # Our stuff
-from .common import CHAR_STATS, SD_ROOT, SD_DIR, CHAR_SUBDIR, INTERNAL_SAVEDIR, HAL_PRIORITY_MENU, HAL_PRIORITY_SHUTDOWN
+from .common import CHAR_STATS, SD_ROOT, SD_DIR, CHAR_SUBDIR, INTERNAL_SAVEDIR, HAL_PRIORITY_MENU, HAL_PRIORITY_IDLE, HAL_PRIORITY_SHUTDOWN
 from . import menu
 from .hal import HAL
 from .character import Character, CharacterError
 from .oledidle import OledIdle
-from ._ui import play_menus
+from . import _ui
 from . import gfx
 
 _DEBUG_DISABLE_EINK = const(False)
@@ -223,8 +223,58 @@ class Gadget:
     # Register the destructor
     self.cleanup = end
   
+  # Generate the System submenu (to put at the end of the oled menu)
+  def _make_system_submenu(self, parent ) -> menu.SubMenu:
+    hal = self.hal
+    
+    # Set it up
+    m = menu.SubMenu( parent, hal,
+      prio=HAL_PRIORITY_MENU+2,
+      title='System'
+    )
+    smm = m.menu
+    smi = smm.items
+    
+    # Power off
+    smi.append(
+      menu.FunctionConfirmer( smm, hal,
+        prio=HAL_PRIORITY_MENU+3,
+        title='Power Off',
+        confirmation='Shut down',
+        con_func=self.power_off
+      )
+    )
+    
+    # Change character
+    smi.append(
+      menu.FunctionConfirmer( smm, hal,
+        prio=HAL_PRIORITY_MENU+3,
+        title='Change Character',
+        confirmation='Switch character',
+        con_func=self.select_character
+      )
+    )
+    
+    # Adjust brightness
+    smi.append(
+      menu.SimpleAdjuster( smm, hal,
+        prio=HAL_PRIORITY_MENU+3,
+        title='Brightness',
+        # Get and set using the HAL function
+        # Preview using the driver function, bypassing HAL's memory
+        get_cur=hal.mtx.brightness,
+        set_abs=hal.mtx.brightness,
+        adj_abs=hal.mtx.matrix.brightness, # Daisy, Daisy, give me your answer do...
+        min=0,
+        max=15,
+        allow_zero=True,
+      )
+    )
+    
+    # Return the completed submenu
+    return m
+  
   # Sets up the play screen
-  # (most of the setup code has been exported to _ui.py)
   def play_screen(self):
     
     if self.character is None:
@@ -233,13 +283,73 @@ class Gadget:
     # Clean up the previous stuff
     self.cleanup()
     
+    # Localisation
+    hal = self.hal
+    char = self.character
+    
     # Eink and needle
     if not _DEBUG_DISABLE_EINK:
-      self.character.draw_eink()
-    self.character.show_curr_hp()
+      char.draw_eink()
+    char.show_curr_hp()
     
-    # Matrix, oled menus (_ui.py) and destructor
-    self.menu, self.cleanup = play_menus(self)
+    # Create default/idle HAL registration
+    mtx_idle = hal.register(
+      priority=HAL_PRIORITY_IDLE,
+      features=('mtx',),
+      callback=char.draw_mtx,
+      name='MtxIdle'
+    )
+    
+    # Root Menu
+    rootmenu = menu.RootMenu( hal, HAL_PRIORITY_MENU )
+    
+    # Matrix menu
+    mm = _ui.make_matrix_menu( hal, char )
+    rootmenu.menus.append(mm)
+    
+    # Oled menu
+    om = _ui.make_oled_menu( hal, char, rootmenu )
+    rootmenu.menus.append(om)
+    
+    # Add the System menu to the end of the Oled menu
+    om.items.append( self._make_system_submenu(om) )
+    
+    # Link up the inputs to the root menu
+    rootmenu.init(
+      cw  = mm.prev_item,
+      ccw = mm.next_item,
+      btn = om.next_item
+    )
+    
+    #def plug():
+    #  pass
+    #
+    #def unplug():
+    #  pass
+    
+    # Tidies up things that were set by play_screen() and triggers a save, if needed
+    def end():
+      
+      # Make sure everything is saved
+      if char.is_dirty():
+        char.save_now( SD_ROOT )
+      
+      # Tidy up UI elements
+      self.menu.destroy()
+      hal.unregister( mtx_idle )
+      self.menu = None
+      
+      # Wipe the character object
+      self.character = None
+      
+      # Nothing left to clean up
+      self.cleanup = lambda : None
+    
+    # Assign
+    #self.sd_plug = plug
+    #self.sd_unplug = unplug
+    self.menu = rootmenu
+    self.cleanup = end
   
   # Start everything, keep refs to looping tasks
   async def start_app(self):

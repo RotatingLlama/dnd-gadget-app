@@ -2,7 +2,7 @@
 # Consider as part of gadget.py
 #
 # T. Lloyd
-# 15 Feb 2026
+# 02 Mar 2026
 
 from micropython import const
 
@@ -12,23 +12,7 @@ from . import menu
 # Matrix adjust timeout, in ms
 _MTX_TIMEOUT = const(3000)
 
-# Sets up the playscreen (inc. all its menus)
-def play_menus(self):
-  hal = self.hal
-  
-  # Localisation
-  rm = menu.RootMenu( self.hal, HAL_PRIORITY_MENU )
-  char = self.character
-  
-  # Create default/idle HAL registration
-  mtx_idle = hal.register(
-    priority=HAL_PRIORITY_IDLE,
-    features=('mtx',),
-    callback=self.character.draw_mtx,
-    name='MtxIdle'
-  )
-  
-  # MATRIX MENU #
+def make_matrix_menu( hal, char ) -> menu.MatrixMenu:
   
   # Calculate matrix geometry
   n_spls = len(char.stats['spells']) # Allow as many spells as we have
@@ -43,7 +27,7 @@ def play_menus(self):
   for r in range(n_chgs,n_rows): # These are the spells
     activerows[r] = r + gap # Actual row the spells are on may be offset if there's a gap between them and the charges
   
-  # Tidy up
+  # Tidy up before we create the closure
   del n_spls, n_rows, gap, r
   
   # Adjust a spell or charge, based on what row of the matrix it's represented on
@@ -61,34 +45,34 @@ def play_menus(self):
         show=True
       )
   
-  mm = menu.MatrixMenu(
+  return menu.MatrixMenu(
       hal,
       prio=HAL_PRIORITY_MENU+1,
       active_rows=activerows,
       inc=lambda r: adj( 1, r ),
       dec=lambda r: adj( -1, r ),
-      buffer=self.hal.mtx.bitmap,
+      buffer=hal.mtx.bitmap,
       redraw_buffer=lambda: char.draw_mtx( show=False ),
-      send_buffer=self.hal.mtx.update,
+      send_buffer=hal.mtx.update,
       timeout=_MTX_TIMEOUT,
     )
-  rm.menus.append(mm)
+
+# Sets up the playscreen (inc. all its menus)
+def make_oled_menu( hal, char, parent ) -> menu.ScrollingOledMenu:
   
-  
-  # OLED MENU #
-  
+  # Root Oled menu
+  #
   om = menu.ScrollingOledMenu(
-    parent=rm,
+    parent=parent,
     hal=hal,
     prio=HAL_PRIORITY_MENU+1,
     wrap=0
   )
-  rm.menus.append(om)
   omi = om.items
   
   # Health submenu
   #
-  submenu = menu.SubMenu( om, self.hal,
+  submenu = menu.SubMenu( om, hal,
     prio=HAL_PRIORITY_MENU+2,
     title='Health'
   )
@@ -97,7 +81,7 @@ def play_menus(self):
   omi.append( submenu )
   #
   smi.append(
-    menu.DoubleAdjuster( smm, self.hal,
+    menu.DoubleAdjuster( smm, hal,
       prio=HAL_PRIORITY_MENU+3,
       title='Damage',
       preview=lambda d: char.damage_calc(-d),
@@ -111,7 +95,7 @@ def play_menus(self):
     )
   )
   smi.append(
-    menu.SimpleAdjuster( smm, self.hal,
+    menu.SimpleAdjuster( smm, hal,
       prio=HAL_PRIORITY_MENU+3,
       title='Heal',
       get_cur=lambda: char.stats['hp'][0],
@@ -124,7 +108,7 @@ def play_menus(self):
     )
   )
   smi.append(
-    menu.SimpleAdjuster( smm, self.hal,
+    menu.SimpleAdjuster( smm, hal,
       prio=HAL_PRIORITY_MENU+3,
       title='Temp HP',
       get_cur=lambda: 0, # Always starts at zero because we're always replacing
@@ -134,7 +118,7 @@ def play_menus(self):
   
   ## Money submenu
   #
-  submenu = menu.SubMenu( om, self.hal,
+  submenu = menu.SubMenu( om, hal,
     prio=HAL_PRIORITY_MENU+2,
     title='Currency'
   )
@@ -143,7 +127,7 @@ def play_menus(self):
   omi.append( submenu )
   #
   smi.append(
-    menu.SimpleAdjuster( smm, self.hal,
+    menu.SimpleAdjuster( smm, hal,
       prio=HAL_PRIORITY_MENU+3,
       title='Gold',
       get_cur=lambda: char.stats['gold'],
@@ -151,7 +135,7 @@ def play_menus(self):
     )
   )
   smi.append(
-    menu.SimpleAdjuster( smm, self.hal,
+    menu.SimpleAdjuster( smm, hal,
       prio=HAL_PRIORITY_MENU+3,
       title='Silver',
       get_cur=lambda: char.stats['silver'],
@@ -159,7 +143,7 @@ def play_menus(self):
     )
   )
   smi.append(
-    menu.SimpleAdjuster( smm, self.hal,
+    menu.SimpleAdjuster( smm, hal,
       prio=HAL_PRIORITY_MENU+3,
       title='Copper',
       get_cur=lambda: char.stats['copper'],
@@ -167,7 +151,7 @@ def play_menus(self):
     )
   )
   smi.append(
-    menu.SimpleAdjuster( smm, self.hal,
+    menu.SimpleAdjuster( smm, hal,
       prio=HAL_PRIORITY_MENU+3,
       title='Platinum',
       get_cur=lambda: char.stats['platinum'],
@@ -175,7 +159,7 @@ def play_menus(self):
     )
   )
   smi.append(
-    menu.SimpleAdjuster( smm, self.hal,
+    menu.SimpleAdjuster( smm, hal,
       prio=HAL_PRIORITY_MENU+3,
       title='Electrum',
       get_cur=lambda: char.stats['electrum'],
@@ -185,7 +169,7 @@ def play_menus(self):
   
   ## Rest/reset submenu
   #
-  submenu = menu.SubMenu( om, self.hal,
+  submenu = menu.SubMenu( om, hal,
     prio=HAL_PRIORITY_MENU+2,
     title='Rest & Reset'
   )
@@ -194,7 +178,7 @@ def play_menus(self):
   omi.append( submenu )
   #
   smi.append(
-    menu.FunctionConfirmer( smm, self.hal,
+    menu.FunctionConfirmer( smm, hal,
       prio=HAL_PRIORITY_MENU+3,
       title='Long Rest',
       confirmation='Take long rest',
@@ -202,7 +186,7 @@ def play_menus(self):
     )
   )
   smi.append(
-    menu.SimpleAdjuster( smm, self.hal,
+    menu.SimpleAdjuster( smm, hal,
       prio=HAL_PRIORITY_MENU+3,
       title='Short Rest',
       #       x x x x x x x x
@@ -215,7 +199,7 @@ def play_menus(self):
     )
   )
   smi.append(
-    menu.FunctionConfirmer( smm, self.hal,
+    menu.FunctionConfirmer( smm, hal,
       prio=HAL_PRIORITY_MENU+3,
       title='Dawn Reset',
       #             x x x x x x x x
@@ -224,7 +208,7 @@ def play_menus(self):
     )
   )
   smi.append(
-    menu.SimpleAdjuster( smm, self.hal,
+    menu.SimpleAdjuster( smm, hal,
       prio=HAL_PRIORITY_MENU+3,
       title='Hit Dice',
       get_cur=lambda: char.stats['hd'][0],
@@ -237,7 +221,7 @@ def play_menus(self):
   
   # XP is its own thing
   omi.append(
-    menu.SimpleAdjuster( om, self.hal,
+    menu.SimpleAdjuster( om, hal,
       prio=HAL_PRIORITY_MENU+2,
       title='XP',
       get_cur=lambda: char.stats['xp'],
@@ -245,84 +229,4 @@ def play_menus(self):
     )
   )
   
-  ## System submenu
-  #
-  submenu = menu.SubMenu( om, self.hal,
-    prio=HAL_PRIORITY_MENU+2,
-    title='System'
-  )
-  smm = submenu.menu
-  smi = smm.items
-  omi.append( submenu )
-  #
-  #
-  smi.append(
-    menu.FunctionConfirmer( smm, self.hal,
-      prio=HAL_PRIORITY_MENU+3,
-      title='Power Off',
-      confirmation='Shut down',
-      con_func=self.power_off
-    )
-  )
-  smi.append(
-    menu.FunctionConfirmer( smm, self.hal,
-      prio=HAL_PRIORITY_MENU+3,
-      title='Change Character',
-      confirmation='Switch character',
-      con_func=self.select_character
-    )
-  )
-  smi.append(
-    menu.SimpleAdjuster( smm, self.hal,
-      prio=HAL_PRIORITY_MENU+3,
-      title='Brightness',
-      # Get and set using the HAL function
-      # Preview using the driver function, bypassing HAL's memory
-      get_cur=self.hal.mtx.brightness,
-      set_abs=self.hal.mtx.brightness,
-      adj_abs=self.hal.mtx.matrix.brightness, # Daisy, Daisy, give me your answer do...
-      min=0,
-      max=15,
-      allow_zero=True,
-    )
-  )
-  
-  # ROOT MENU #
-  
-  rm.init(
-    cw  = mm.prev_item,
-    ccw = mm.next_item,
-    btn = om.next_item
-  )
-  
-  
-  #def plug():
-  #  pass
-  #
-  #def unplug():
-  #  pass
-  
-  # Tidies up things that were set by play_menus() and triggers a save, if needed
-  def end():
-    
-    # Tidy up UI elements
-    self.menu.destroy()
-    self.hal.unregister( mtx_idle )
-    
-    # Make sure everything is saved
-    if self.character.is_dirty():
-      self.character.save_now( SD_ROOT )
-    
-    # Wipe the character object
-    self.character = None
-    
-    # Nothing left to clean up
-    self.cleanup = lambda : None
-  
-  # Assign
-  #self.menu = rm
-  #self.cleanup = end
-  #self.sd_plug = plug
-  #self.sd_unplug = unplug
-  
-  return rm, end
+  return om
