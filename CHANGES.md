@@ -1,6 +1,17 @@
 TODO
 ====
 * Death saves:
+  - character.py has to drive the menu
+    - On load, char knows what set of menus to load into
+    - On death, the trigger to change menus comes from within char
+    - In future, other rulesets (determined by char) will need different menu sets
+    - SO:
+      - gadget.play_screen() still exists
+      - Most of the menu code moves into character.py
+      - play_screen() triggers char object to set up menus etc through a new Character method
+      - play_screen hands char object the system menu (or its constructor function) to tack onto the end
+      - State transitions within play (saves/stabilise/death) handled within char
+      - char needs destructor function that gadget can call if top-level state change is needed
   - Function to set up menus for saves.  Prob need new operating mode for this
     - Successes ....-> stablise at zero
     - Failures ....-> Transition to Dead
