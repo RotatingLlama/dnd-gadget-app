@@ -1,19 +1,21 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 15 Feb 2026
+# 05 Mar 2026
 
-#import asyncio
+# Builtin libraries
 import os
 from micropython import const
 from gc import collect as gc_collect
-from .pathlib import Path
 import json
 import errno
-#import gc
 
+# Our stuff
+from .pathlib import Path # Not a builtin in MicroPython (but mirrors CPython)
+from . import menu
+from . import _ui
 from . import gfx
-from .common import DeferredTask, CHAR_STATS, INTERNAL_SAVEDIR
+from .common import DeferredTask, CHAR_STATS, INTERNAL_SAVEDIR, HAL_PRIORITY_MENU, HAL_PRIORITY_IDLE
 
 # When loading from file, load no more than this many of each item
 _MAX_SPELLS = const(9)
@@ -99,7 +101,7 @@ PARAMS = {
 # sd_mounted: A callable which will return a boolean indicating whether the SD card is ready for read/write
 # chardir: Path object to the character directory
 class Character:
-  def __init__(self, hal, sd_mounted, chardir:Path ):
+  def __init__(self, hal, sd_mounted, chardir:Path, sysmenu_factory:menu.SubMenu, enable_eink=True ):
     
     # Where are my files
     if not chardir.is_dir():
@@ -111,6 +113,12 @@ class Character:
     
     # Ability to check if we have an SD card
     self._sd_mounted = sd_mounted
+    
+    # Takes a menu parent.  Returns a menu.SubMenu
+    self._sysmenu_factory = sysmenu_factory
+    
+    # Debug purposes
+    self._enable_eink = enable_eink
     
     # Stats
     # This will get populated during load() with all the simple PARAMS (above) so they don't need to be defined here
@@ -132,117 +140,12 @@ class Character:
     self.is_saving = self._saver.is_dirty
     self._dirty = False
     
+    # 
+    self._active = False # Are we in play?
+    self._rootmenu = None
+    self._cleanup_ui = lambda: None
+    
     self._load()
-  
-  def is_dirty(self):
-    return self._dirty
-  
-  # Blindly overwrites f with the save data
-  # Return bool indicating success/failure
-  def _save_file(self, f ) -> bool:
-    s = self.stats
-    sf = { k: s[k] for k in PARAMS }
-    sf.update({
-      'hitdice' : dict(zip( ['current','max'], s['hd'] )),
-      'hp'      : dict(zip( [ 'current', 'max', 'temporary' ], s['hp'][:3] )),
-      'spells'  : [ dict(zip(['current','max'],[ sp[0], sp[1] ])) for sp in s['spells'] ],
-      'charges' : [ {
-        'name'    : c['name'],
-        'current' : c['curr'],
-        'max'     : c['max'],
-        'reset'   : c['reset']
-        } for c in s['charges'] ],
-      'death' : s['death'],
-    })
-    
-    try:
-      with open( f, 'w') as fd:
-        # Micropython (1.26) doesn't support the indent argument for pretty printing
-        json.dump( sf, fd ) #, separators=(',\n', ': ') )
-        
-    except OSError:
-      return False
-    
-    return True
-  
-  def save_now(self) -> bool:
-    
-    # If the proper directory is missing, switch to the internal directory
-    if not self.dir.is_dir():
-      self.dir = Path(INTERNAL_SAVEDIR) / self.dir.name
-      self.dir.mkdir(parents=True, exist_ok=True)
-      print(f'Moved save location to internal because SD went bad')
-    
-    # The file path to save to, as a string
-    f = str( self.dir / CHAR_STATS )
-    
-    # Success/failure tracker
-    ok  = True
-    
-    # Save out the file, temporarily preserving the previous one
-    ok = ok and self._save_file( f + '.new' )
-    
-    # Ensure the new file is saved
-    ok = ok and try_sync()
-    
-    # Replace the old file
-    ok = ok and self._save_file( f )
-    ok = ok and try_sync()
-    
-    if not ok:
-      return False
-    
-    self._dirty = False
-    print('Saved.')
-    return True
-  
-  # DEPRECATED: Use save_now() instead.   Try and save, anywhere, now.
-  def emergency_save(self, dir ) -> bool:
-    raise NotImplementedError()
-    # If our old directory exists, try to do a normal save
-    ok = self.dir.is_dir()
-    if ok:
-      ok = self.save_now()
-    
-    # If that worked, we're done
-    if ok:
-      print('Saved to original character directory.')
-      self._saver.untouch()
-      return True
-    
-    # Original chardir name will become the base of the new filename
-    basename = self.dir.name
-    
-    # Emergency save it is.  Sanity check first
-    dir = Path(dir)
-    if not dir.is_dir():
-      print('Emergency save directory does not exist!')
-      print(dir)
-      return False
-    
-    # Find a filename to save to that doesn't already exist
-    i = 0
-    while True:
-      f = dir / f'{basename}-stats-{i:02}.txt'
-      if not f.exists():
-        break
-      i += 1
-    
-    # Attempt to save to the emergency location
-    if not self._save_file( str(f) ):
-      print('Emergency save FAILED to',f)
-      return False
-    if not try_sync():
-      print('Emergency save failed to sync!')
-      return False
-    
-    print('Emergency save successful:',f)
-    self._saver.untouch()
-    return True
-  
-  def save(self):
-    self._saver.touch()
-    self._dirty = True
   
   def _load(self):
     
@@ -410,6 +313,201 @@ class Character:
       'charges' : ch,
       'death' : d,
     })
+  
+  # Constructs the play screen and menus
+  def play(self):
+    
+    # Sanity
+    if self._active:
+      raise RuntimeError('Character.play() called twice')
+    
+    # We are active
+    self._active = True
+    
+    # TODO: Logoc to choose which state to start with
+    self._playscreen_stable()
+  
+  # Undoes things that were done by play() and triggers a save, if needed
+  def end_play(self):
+    
+    # Make sure everything is saved
+    if self._dirty:
+      self.save_now()
+    
+    # Tidy up UI elements
+    self._cleanup_ui()
+    
+    # Deactivate
+    self._active = False
+  
+  # Constructs menus for stable playstate
+  def _playscreen_stable(self):
+    
+    # Clean up previous playstate
+    self._cleanup_ui()
+    
+    # Localise
+    hal = self.hal
+    
+    # Eink and needle
+    self.draw_eink()
+    self.show_curr_hp()
+    
+    # Create default/idle HAL registration
+    mtx_idle = hal.register(
+      priority=HAL_PRIORITY_IDLE,
+      features=('mtx',),
+      callback=self.draw_mtx,
+      name='MtxIdle'
+    )
+    
+    # Root Menu
+    rootmenu = menu.RootMenu( hal, HAL_PRIORITY_MENU )
+    
+    # Matrix menu
+    mm = _ui.make_matrix_menu( hal, self )
+    rootmenu.menus.append(mm)
+    
+    # Oled menu
+    om = _ui.make_oled_menu( hal, self, rootmenu )
+    rootmenu.menus.append(om)
+    
+    # Add the System menu to the end of the Oled menu
+    om.items.append( self._sysmenu_factory(om) )
+    
+    # Link up the inputs to the root menu
+    rootmenu.init(
+      cw  = mm.prev_item,
+      ccw = mm.next_item,
+      btn = om.next_item
+    )
+    
+    # Tidies up things that were set by _playscreen_stable()
+    def end():
+      
+      # Tidy up UI elements
+      self._rootmenu.destroy()
+      hal.unregister( mtx_idle )
+      self._rootmenu = None
+      
+      # Nothing left to clean up
+      self._cleanup_ui = lambda : None
+    
+    # Assign
+    self._cleanup_ui = end
+    self._rootmenu = rootmenu
+  
+  def is_dirty(self):
+    return self._dirty
+  
+  # Blindly overwrites f with the save data
+  # Return bool indicating success/failure
+  def _save_file(self, f ) -> bool:
+    s = self.stats
+    sf = { k: s[k] for k in PARAMS }
+    sf.update({
+      'hitdice' : dict(zip( ['current','max'], s['hd'] )),
+      'hp'      : dict(zip( [ 'current', 'max', 'temporary' ], s['hp'][:3] )),
+      'spells'  : [ dict(zip(['current','max'],[ sp[0], sp[1] ])) for sp in s['spells'] ],
+      'charges' : [ {
+        'name'    : c['name'],
+        'current' : c['curr'],
+        'max'     : c['max'],
+        'reset'   : c['reset']
+        } for c in s['charges'] ],
+      'death' : s['death'],
+    })
+    
+    try:
+      with open( f, 'w') as fd:
+        # Micropython (1.26) doesn't support the indent argument for pretty printing
+        json.dump( sf, fd ) #, separators=(',\n', ': ') )
+        
+    except OSError:
+      return False
+    
+    return True
+  
+  def save_now(self) -> bool:
+    
+    # If the proper directory is missing, switch to the internal directory
+    if not self.dir.is_dir():
+      self.dir = Path(INTERNAL_SAVEDIR) / self.dir.name
+      self.dir.mkdir(parents=True, exist_ok=True)
+      print(f'Moved save location to internal because SD went bad')
+    
+    # If the SD card comes back, gadget.py will update our .dir property directly
+    
+    # The file path to save to, as a string
+    f = str( self.dir / CHAR_STATS )
+    
+    # Success/failure tracker
+    ok  = True
+    
+    # Save out the file, temporarily preserving the previous one
+    ok = ok and self._save_file( f + '.new' )
+    
+    # Ensure the new file is saved
+    ok = ok and try_sync()
+    
+    # Replace the old file
+    ok = ok and self._save_file( f )
+    ok = ok and try_sync()
+    
+    if not ok:
+      return False
+    
+    self._dirty = False
+    print('Saved.')
+    return True
+  
+  # DEPRECATED: Use save_now() instead.   Try and save, anywhere, now.
+  def emergency_save(self, dir ) -> bool:
+    raise NotImplementedError()
+    # If our old directory exists, try to do a normal save
+    ok = self.dir.is_dir()
+    if ok:
+      ok = self.save_now()
+    
+    # If that worked, we're done
+    if ok:
+      print('Saved to original character directory.')
+      self._saver.untouch()
+      return True
+    
+    # Original chardir name will become the base of the new filename
+    basename = self.dir.name
+    
+    # Emergency save it is.  Sanity check first
+    dir = Path(dir)
+    if not dir.is_dir():
+      print('Emergency save directory does not exist!')
+      print(dir)
+      return False
+    
+    # Find a filename to save to that doesn't already exist
+    i = 0
+    while True:
+      f = dir / f'{basename}-stats-{i:02}.txt'
+      if not f.exists():
+        break
+      i += 1
+    
+    # Attempt to save to the emergency location
+    if not self._save_file( str(f) ):
+      print('Emergency save FAILED to',f)
+      return False
+    if not try_sync():
+      print('Emergency save failed to sync!')
+      return False
+    
+    print('Emergency save successful:',f)
+    self._saver.untouch()
+    return True
+  
+  def save(self):
+    self._saver.touch()
+    self._dirty = True
   
   # DOES NOT VALIDATE hit dice
   def short_rest(self, hit_dice=0, show=True):
@@ -731,9 +829,11 @@ class Character:
   def draw_eink(self,show=True):
     lowbatt = self.hal.batt_low.is_set() and self.hal.batt_discharge.is_set()
     gfx.draw_play_screen( fb=self.hal.eink, char=self, lowbatt=lowbatt )
-    if show:
+    if show and self._enable_eink:
       self.hal.eink_send_refresh()
   
+  '''
   def draw_select(self):
     gfx.draw_char_select( fb=self.hal.eink, chars=[] )
     self.hal.eink_send_refresh()
+  '''

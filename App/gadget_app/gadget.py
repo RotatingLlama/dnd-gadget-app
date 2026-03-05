@@ -2,7 +2,7 @@
 # For Micropython v1.26
 #
 # T. Lloyd
-# 02 Mar 2026
+# 05 Mar 2026
 
 
 # TO USE:
@@ -16,7 +16,7 @@
 
 # Builtin libraries
 import asyncio
-import gc
+#import gc
 import vfs
 from micropython import const
 import micropython
@@ -27,12 +27,12 @@ from os import urandom
 from .pathlib import Path
 
 # Our stuff
-from .common import CHAR_STATS, SD_ROOT, SD_DIR, CHAR_SUBDIR, INTERNAL_SAVEDIR, HAL_PRIORITY_MENU, HAL_PRIORITY_IDLE, HAL_PRIORITY_SHUTDOWN
+from .common import CHAR_STATS, SD_ROOT, SD_DIR, CHAR_SUBDIR, INTERNAL_SAVEDIR, HAL_PRIORITY_MENU, HAL_PRIORITY_SHUTDOWN
 from . import menu
 from .hal import HAL
 from .character import Character, CharacterError
-from .oledidle import OledIdle
-from . import _ui
+from ._oledidle import OledIdle
+#from . import _ui
 from . import gfx
 
 _DEBUG_DISABLE_EINK = const(False)
@@ -62,7 +62,7 @@ class Gadget:
     
     # Things we want to keep track of
     self.file_root = Path( SD_ROOT ) / SD_DIR
-    self.menu = None
+    #self.menu = None
     self.character = None
     self.sd_ok = asyncio.Event()
     self.sd_gone = asyncio.Event()
@@ -138,7 +138,9 @@ class Gadget:
         c = Character(
           hal = self.hal,
           sd_mounted = self.sd_ok.is_set,
-          chardir = x
+          chardir = x,
+          sysmenu_factory = self._make_system_submenu,
+          enable_eink = (not _DEBUG_DISABLE_EINK)
         )
       except CharacterError as e:
         print( f'Failed to load from /{x.name}/: {str(e)}' )
@@ -169,10 +171,10 @@ class Gadget:
     
     if not _DEBUG_DISABLE_EINK:
       self.hal.eink_send_refresh()
-    #print(chars)
     
     # Gets called when the button is pressed, gets passed a numeric index
     def choose( i:int ):
+      nonlocal chars
       
       # Ignore call if the character's directory has gone away
       if not chars[i].dir.is_dir():
@@ -181,6 +183,9 @@ class Gadget:
       # Set the character
       self.character = chars[i]
       print( self.character.stats )
+      
+      # No longer need this
+      del chars
       
       # Launch the play screen constructor
       self.play_screen()
@@ -193,7 +198,7 @@ class Gadget:
       self.needle_wander(True)
     
     # Set up the character chooser needle
-    self.menu = menu.NeedleMenu(
+    rootmenu = menu.NeedleMenu(
       hal = self.hal,
       prio = HAL_PRIORITY_MENU,
       n = len(chars),
@@ -204,7 +209,7 @@ class Gadget:
     # Function to clean up this character picker instance
     def end():
       self.needle_wander(False)
-      self.menu.destroy()
+      rootmenu.destroy()
       self.play_wait_ani.clear()
       #self.stop_ani()
       self.cleanup = lambda : None
@@ -283,43 +288,8 @@ class Gadget:
     # Clean up the previous stuff
     self.cleanup()
     
-    # Localisation
-    hal = self.hal
-    char = self.character
-    
-    # Eink and needle
-    if not _DEBUG_DISABLE_EINK:
-      char.draw_eink()
-    char.show_curr_hp()
-    
-    # Create default/idle HAL registration
-    mtx_idle = hal.register(
-      priority=HAL_PRIORITY_IDLE,
-      features=('mtx',),
-      callback=char.draw_mtx,
-      name='MtxIdle'
-    )
-    
-    # Root Menu
-    rootmenu = menu.RootMenu( hal, HAL_PRIORITY_MENU )
-    
-    # Matrix menu
-    mm = _ui.make_matrix_menu( hal, char )
-    rootmenu.menus.append(mm)
-    
-    # Oled menu
-    om = _ui.make_oled_menu( hal, char, rootmenu )
-    rootmenu.menus.append(om)
-    
-    # Add the System menu to the end of the Oled menu
-    om.items.append( self._make_system_submenu(om) )
-    
-    # Link up the inputs to the root menu
-    rootmenu.init(
-      cw  = mm.prev_item,
-      ccw = mm.next_item,
-      btn = om.next_item
-    )
+    # Set everything up
+    self.character.play()
     
     #def plug():
     #  pass
@@ -330,14 +300,11 @@ class Gadget:
     # Tidies up things that were set by play_screen() and triggers a save, if needed
     def end():
       
-      # Make sure everything is saved
-      if char.is_dirty():
-        char.save_now( SD_ROOT )
+      # Make sure everything is saved and UI cleaned up
+      self.character.end_play()
       
       # Tidy up UI elements
-      self.menu.destroy()
-      hal.unregister( mtx_idle )
-      self.menu = None
+      #self.menu = None
       
       # Wipe the character object
       self.character = None
@@ -348,7 +315,7 @@ class Gadget:
     # Assign
     #self.sd_plug = plug
     #self.sd_unplug = unplug
-    self.menu = rootmenu
+    #self.menu = rootmenu
     self.cleanup = end
   
   # Start everything, keep refs to looping tasks

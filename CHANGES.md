@@ -45,6 +45,10 @@ TODO
   - Rationalise character load-in and matrix geometry calculation:
     - Both of these have opinions about how many charges are permissible
     - These opinions should always match, or better yet come from the same source
+- character.py saving:
+  - self._saver.untouch() after saving
+  - self._saver.untouch() upon exiting playscreen
+  - save_now() should check self._dirty before doing anything?
 - Prompt to add health after spending hit dice on short rest
 - hw.py: Make 'low battery' threshold a round percentage instead of a voltage value
 - Add ability to adjust max HP during play
@@ -131,7 +135,8 @@ Visible Changes
 Invisible Changes
 -----------------
 * Now sets internal clock at startup based on most recent savefile time
-* Moved code out of gadget.py into new oledidle.py and ui.py
+* Moved code out of gadget.py into new _oledidle.py and _ui.py
+* character.py is now responsible for setting up all UI elements (menus etc) related to gameplay
 * Shutting down now actually halts the CPU
 * No need to specify everything in a new character savefile.  Non-mandatory items will now take safe default values
 
