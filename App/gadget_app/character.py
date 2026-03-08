@@ -1,7 +1,7 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 05 Mar 2026
+# 08 Mar 2026
 
 # Builtin libraries
 import os
@@ -136,14 +136,15 @@ class Character:
     # self.is_saving() indicates if we are waiting to do a deferred save
     # self._dirty indicates whether we have unsaved data
     
+    # Save tracking
     self._saver = DeferredTask( timeout=_SAVE_TIMEOUT, callback=self.save_now )
     self.is_saving = self._saver.is_dirty
     self._dirty = False
     
-    # 
+    # UI tracking
     self._active = False # Are we in play?
     self._rootmenu = None
-    self._cleanup_ui = lambda: None
+    self._mtx_idle = None # Holder for the CR
     
     self._load()
   
@@ -173,6 +174,7 @@ class Character:
         raise CharacterError(f'Could not open save file: {errno.errorcode[e.errno]}')
     
     del uts, ts, f, fd
+    gc_collect()
     
     # Step through the expected simple parameters
     for k in PARAMS:
@@ -324,8 +326,8 @@ class Character:
     # We are active
     self._active = True
     
-    # TODO: Logoc to choose which state to start with
-    self._playscreen_stable()
+    # Go
+    self._playscreen()
   
   # Undoes things that were done by play() and triggers a save, if needed
   def end_play(self):
@@ -341,32 +343,44 @@ class Character:
     self._active = False
   
   # Constructs menus for stable playstate
-  def _playscreen_stable(self):
+  def _playscreen(self, show=True ):
     
     # Clean up previous playstate
     self._cleanup_ui()
     
     # Localise
     hal = self.hal
+    ds = self.stats['death']['status']
     
     # Eink and needle
-    self.draw_eink()
-    self.show_curr_hp()
-    
-    # Create default/idle HAL registration
-    mtx_idle = hal.register(
-      priority=HAL_PRIORITY_IDLE,
-      features=('mtx',),
-      callback=self.draw_mtx,
-      name='MtxIdle'
-    )
+    if show:
+      self.draw_eink()
+      self.show_curr_hp()
     
     # Root Menu
     rootmenu = menu.RootMenu( hal, HAL_PRIORITY_MENU )
     
-    # Matrix menu
-    mm = _ui.make_matrix_menu( hal, self )
-    rootmenu.menus.append(mm)
+    # Set up matrix menu variables based on death status
+    if ds == 'stable':
+      mm = _ui.make_matrix_menu_stable( hal, self )
+      rootmenu.menus.append(mm)
+      mtx_cb = self.draw_mtx_stable
+    
+    elif ds == 'saves':
+      mm = _ui.make_matrix_menu_saves( hal, self )
+      rootmenu.menus.append(mm)
+      mtx_cb = self.draw_mtx_saves
+      
+    elif ds == 'dead':
+      mtx_cb = self.draw_mtx_dead
+    
+    # Create default/idle HAL registration
+    self._mtx_idle = hal.register(
+      priority=HAL_PRIORITY_IDLE,
+      features=('mtx',),
+      callback=mtx_cb,
+      name='MtxIdle'
+    )
     
     # Oled menu
     om = _ui.make_oled_menu( hal, self, rootmenu )
@@ -376,26 +390,33 @@ class Character:
     om.items.append( self._sysmenu_factory(om) )
     
     # Link up the inputs to the root menu
-    rootmenu.init(
-      cw  = mm.prev_item,
-      ccw = mm.next_item,
-      btn = om.next_item
-    )
-    
-    # Tidies up things that were set by _playscreen_stable()
-    def end():
-      
-      # Tidy up UI elements
-      self._rootmenu.destroy()
-      hal.unregister( mtx_idle )
-      self._rootmenu = None
-      
-      # Nothing left to clean up
-      self._cleanup_ui = lambda : None
+    if ds == 'dead':
+      rootmenu.init(
+        btn = om.next_item
+      )
+    else:
+      rootmenu.init(
+        cw  = mm.prev_item,
+        ccw = mm.next_item,
+        btn = om.next_item
+      )
     
     # Assign
-    self._cleanup_ui = end
     self._rootmenu = rootmenu
+    
+    #
+    gc_collect()
+  
+  # Tidies up things that were set by _playscreen()
+  def _cleanup_ui(self):
+    
+    if self._rootmenu is not None:
+      self._rootmenu.destroy()
+      self._rootmenu = None
+    
+    if self._mtx_idle is not None:
+      self.hal.unregister( self._mtx_idle )
+      self._mtx_idle = None
   
   def is_dirty(self):
     return self._dirty
@@ -528,7 +549,7 @@ class Character:
     
     self.save()
     
-    self.draw_mtx( show=show )
+    self.draw_mtx_stable( show=show )
   
   def long_rest(self, show=True):
     
@@ -569,7 +590,7 @@ class Character:
     if e:
       self.draw_eink( show=show )
     
-    self.draw_mtx( show=show )
+    self.draw_mtx_stable( show=show )
     
     if show:
       self.show_curr_hp()
@@ -582,20 +603,25 @@ class Character:
     
     self.save()
     
-    self.draw_mtx( show=show )
+    self.draw_mtx_stable( show=show )
   
   # Gain HP
   # DOES validate
   def heal( self, amt, show=True ):
     
-    # Current, max, temp, orig_temp
+    # Localise
     hp = self.stats['hp']
+    death = self.stats['death']
     
     assert type(amt) is int
     assert amt >= 0
     
     # Allow but silently exit if incrementing by zero
     if amt == 0:
+      return
+    
+    # Can't heal if we're dead
+    if death['status'] == 'dead' or death['failures'] >= 3:
       return
     
     # Add the HP
@@ -605,8 +631,10 @@ class Character:
     if hp[0] > hp[1]:
       hp[0] = hp[1]
     
-    # Ensure we're not doing death saves now
-    self.stats['death']['status'] = 'stable'
+    # If we were in death saves, stabilise
+    if death['status'] == 'saves':
+      self.stabilise(show=show)
+      return
     
     self.save()
     
@@ -642,6 +670,11 @@ class Character:
     assert type(amt) is int
     assert amt >= 0
     
+    # If we're in death saves, or dead - don't accept damage.
+    # Expect user to apply extra failures manually.
+    if self.stats['death']['status'] != 'stable':
+      return
+    
     # Affects whether we need to update eink
     tmp_cache = hp[2]
     
@@ -660,12 +693,13 @@ class Character:
     
     # Is the overdamage >= max HP?
     if od >= hp[1]:
-      self.die(show=show)
+      self.die()
       return
     
-    # Do we need to enter eath saves?
+    # Do we need to enter death saves?
     if hp[0] == 0:
-      self.stats['death']['status'] = 'saves'
+      self.deathsaves()
+      return
     
     self.save()
     
@@ -706,16 +740,82 @@ class Character:
     if show:
       self.show_curr_hp()
   
-  def stabilise(self):
-    self.stats['death']['status'] = 'stable'
+  # Set the death status, reset death saves to zero, save, update playscreen
+  def _death_status(self, status:str, show=True ):
+    
+    # Sanity
+    if status not in ('stable','saves','dead'):
+      raise ValueError('Invalid status')
+    
+    # Localise
+    d = self.stats['death']
+    
+    # Are we already in this status?
+    if d['status'] == status:
+      return
+    
+    # Update the object
+    d['status'] = status
+    d['successes'] = 0
+    d['failures'] = 0
+    print('Set status to',status)
     self.save()
-  
-  # Character actually dies
+    
+    # Go
+    self._playscreen(show=show)
+  #
+  # Conveience functions to trigger status change.  All use _death_status()
+  def stabilise(self, show=True ):
+    self._death_status('stable',show=show)
+  def deathsaves(self, show=True ):
+    self._death_status('saves',show=show)
   def die(self, show=True ):
-    self.stats['death']['status'] = 'dead'
-    self.save()
-    self.draw_eink( show=show )
+    self._death_status('dead',show=show)
   
+  # success determines which track to edit
+  # val sets the value.  ABSOLUTE, not incremental.
+  # DOES validate
+  def set_deathsaves(self, success:bool, val:int, show=True ):
+    
+    # Localise
+    d = self.stats['death']
+    
+    # Sanity
+    if d['status'] != 'saves':
+      raise RuntimeError('Attempted to enter death save result when not in death saves!')
+    
+    # Validate
+    if not 0 <= val <= 3:
+      return
+    
+    if success: # Try to change the number of successes
+      
+      # Can't change successes if we're already dead
+      if d['failures'] >= 3:
+        return
+      
+      d['successes'] = val
+      
+    else: # Try to change the number of failures
+      
+      # Can't change failures if we've already succeeded
+      if d['successes'] >= 3:
+        return
+      
+      # Are we setting xor unsetting a failure state?
+      update_menu = bool( (d['failures']==3) ^ (val==3) )
+      
+      # Update the value
+      d['failures'] = val
+      
+      # Do we need to change what's in the oled menu?
+      if update_menu:
+        # Regenerate the menus without refreshing the eink
+        self._playscreen(show=False)
+    
+    self.save()
+    self.draw_mtx_saves(show=show)
+    
   # Sets the max hit points
   # DOES validate
   def set_max_hp( self, val, show=True ):
@@ -765,7 +865,7 @@ class Character:
     
     s[0] = val
     self.save()
-    self.draw_mtx(show=show)
+    self.draw_mtx_stable(show=show)
   
   # Set a charge item to a given number of charges
   # DOES validate
@@ -781,7 +881,7 @@ class Character:
     
     c['curr'] = val
     self.save()
-    self.draw_mtx(show=show)
+    self.draw_mtx_stable(show=show)
   
   # Helper function for these numeric-only things
   # Does NOT validate
@@ -803,7 +903,7 @@ class Character:
   
   # Resets the matrix buffer with current spells, charges
   # Optionally updates display
-  def draw_mtx(self, show=True):
+  def draw_mtx_stable(self, show=True):
     
     stats = self.stats
     fb = self.hal.mtx.bitmap
@@ -826,14 +926,32 @@ class Character:
     if show:
       self.hal.mtx.update()
   
+  def draw_mtx_saves(self, show=True):
+    
+    death = self.stats['death']
+    mtx = self.hal.mtx
+    
+    mtx.clear()
+    
+    # LSB is at left of display
+    mtx.bitmap[0] = 256 - ( 1 << (8-death['successes']) )
+    mtx.bitmap[1] = 256 - ( 1 << (8-death['failures']) )
+    
+    if show:
+      mtx.update()
+  
+  # Draw a skull on the matrix
+  def draw_mtx_dead(self, show=True):
+    mtx = self.hal.mtx
+    mtx.clear()
+    #mtx.bitmap[:8] = bytes((0x00,0x3e,0x7f,0x49,0x49,0x77,0x3e,0x2a)) # 7x7 skull
+    mtx.bitmap[:8] = bytes((0x7e,0xff,0x81,0x99,0xe7,0x7e,0x24,0x24)) # 8x8 skull
+    if show:
+      mtx.update()
+  
   def draw_eink(self,show=True):
     lowbatt = self.hal.batt_low.is_set() and self.hal.batt_discharge.is_set()
     gfx.draw_play_screen( fb=self.hal.eink, char=self, lowbatt=lowbatt )
     if show and self._enable_eink:
       self.hal.eink_send_refresh()
-  
-  '''
-  def draw_select(self):
-    gfx.draw_char_select( fb=self.hal.eink, chars=[] )
-    self.hal.eink_send_refresh()
-  '''
+    gc_collect()

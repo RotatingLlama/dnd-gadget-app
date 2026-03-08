@@ -2,7 +2,7 @@
 # For Micropython v1.26
 #
 # T. Lloyd
-# 05 Mar 2026
+# 08 Mar 2026
 
 
 # TO USE:
@@ -16,9 +16,9 @@
 
 # Builtin libraries
 import asyncio
-#import gc
+from gc import collect as gc_collect
 import vfs
-from micropython import const
+from micropython import const, mem_info
 import micropython
 import time
 from os import urandom
@@ -62,7 +62,6 @@ class Gadget:
     
     # Things we want to keep track of
     self.file_root = Path( SD_ROOT ) / SD_DIR
-    #self.menu = None
     self.character = None
     self.sd_ok = asyncio.Event()
     self.sd_gone = asyncio.Event()
@@ -100,7 +99,7 @@ class Gadget:
     self._shutdown.set()
   
   # Looks at the directory and generates a list of available Character objects
-  def _find_chars(self):
+  def _find_chars(self) -> list[Character]:
     
     # Directory of character directories
     cd = self.file_root / CHAR_SUBDIR
@@ -167,6 +166,8 @@ class Gadget:
     
     # Takes a framebuffer and a list of chars to show
     # Returns as many chars as it actually did show
+    gc_collect()
+    mem_info()
     chars = gfx.draw_char_select( self.hal.eink, self._find_chars() )
     
     if not _DEBUG_DISABLE_EINK:
@@ -186,6 +187,8 @@ class Gadget:
       
       # No longer need this
       del chars
+      gc_collect()
+      mem_info()
       
       # Launch the play screen constructor
       self.play_screen()
@@ -290,12 +293,7 @@ class Gadget:
     
     # Set everything up
     self.character.play()
-    
-    #def plug():
-    #  pass
-    #
-    #def unplug():
-    #  pass
+    #mem_info(1)
     
     # Tidies up things that were set by play_screen() and triggers a save, if needed
     def end():
@@ -303,19 +301,17 @@ class Gadget:
       # Make sure everything is saved and UI cleaned up
       self.character.end_play()
       
-      # Tidy up UI elements
-      #self.menu = None
-      
       # Wipe the character object
       self.character = None
       
       # Nothing left to clean up
       self.cleanup = lambda : None
+      
+      gc_collect()
     
     # Assign
-    #self.sd_plug = plug
-    #self.sd_unplug = unplug
-    #self.menu = rootmenu
+    #self.sd_plug = lambda : None
+    #self.sd_unplug = lambda : None
     self.cleanup = end
   
   # Start everything, keep refs to looping tasks
@@ -349,6 +345,7 @@ class Gadget:
     # Either way we have a known, settled state and we can proceed
     self.show_shade(2,1)
     self._show_splash = False
+    gc_collect()
     print('Startup complete.')
     
     # Set up the character select screen

@@ -1,8 +1,8 @@
 # UI code for menus, etc.
-# Consider as part of gadget.py
+# Consider as part of character.py
 #
 # T. Lloyd
-# 02 Mar 2026
+# 08 Mar 2026
 
 from micropython import const
 
@@ -12,7 +12,8 @@ from . import menu
 # Matrix adjust timeout, in ms
 _MTX_TIMEOUT = const(3000)
 
-def make_matrix_menu( hal, char ) -> menu.MatrixMenu:
+
+def make_matrix_menu_stable( hal, char ) -> menu.MatrixMenu:
   
   # Calculate matrix geometry
   n_spls = len(char.stats['spells']) # Allow as many spells as we have
@@ -52,16 +53,47 @@ def make_matrix_menu( hal, char ) -> menu.MatrixMenu:
       inc=lambda r: adj( 1, r ),
       dec=lambda r: adj( -1, r ),
       buffer=hal.mtx.bitmap,
-      redraw_buffer=lambda: char.draw_mtx( show=False ),
+      redraw_buffer=lambda: char.draw_mtx_stable( show=False ),
       send_buffer=hal.mtx.update,
       timeout=_MTX_TIMEOUT,
     )
 
-# Sets up the playscreen (inc. all its menus)
+def make_matrix_menu_saves( hal, char ) -> menu.MatrixMenu:
+  
+  # Adjustment function.
+  # n: The (relative) amount to adjust by
+  # row: The row ID
+  def adj( n:int, row:int ) -> None:
+    
+    # row 0: success
+    # row 1: failure
+    
+    char.set_deathsaves(
+      success = (not row), # Transform row number into success boolean
+      val = n + char.stats['death'][ ('successes','failures')[row] ],
+      show = True
+    )
+  
+  return menu.MatrixMenu(
+      hal,
+      prio=HAL_PRIORITY_MENU+1,
+      active_rows=bytes((0,1,)),
+      inc=lambda r: adj( 1, r ),
+      dec=lambda r: adj( -1, r ),
+      buffer=hal.mtx.bitmap,
+      redraw_buffer=lambda: char.draw_mtx_saves( show=False ),
+      send_buffer=hal.mtx.update,
+      timeout=_MTX_TIMEOUT,
+    )
+
+
+# Sets up the OLED menu (works for all states stable/saves/dead)
 def make_oled_menu( hal, char, parent ) -> menu.ScrollingOledMenu:
   
+  # Localise
+  death = char.stats['death']
+  
   # Root Oled menu
-  #
   om = menu.ScrollingOledMenu(
     parent=parent,
     hal=hal,
@@ -71,14 +103,70 @@ def make_oled_menu( hal, char, parent ) -> menu.ScrollingOledMenu:
   omi = om.items
   
   # Health submenu
-  #
-  submenu = menu.SubMenu( om, hal,
+  if death['status'] == 'stable':
+    # Use the normal damage/heal/temphp submenu
+    omi.append( _submenu_health_stable( hal, char, om ) )
+  elif death['status'] == 'saves':
+    if death['failures'] < 3:
+      # Use the reduced stabilise/heal submenu
+      omi.append( _submenu_health_deathsaves( hal, char, om ) )
+    else:
+      # No menu.  Just a prompt to die
+      omi.append(
+        menu.FunctionConfirmer( om, hal,
+          prio=HAL_PRIORITY_MENU+3,
+          title='Die',
+          confirmation='Die?',
+          con_func=char.die
+        )
+      )
+  elif death['status'] == 'dead':
+    # Resurrection menu
+    omi.append( _submenu_resurrection( hal, char, om ) )
+  
+  # Money submenu - always available
+  omi.append( _submenu_money( hal, char, om ) )
+  
+  # Rest/reset submenu - only appplies when stable
+  if death['status'] == 'stable':
+    omi.append( _submenu_rest_reset( hal, char, om ) )
+  
+  # XP is its own thing - always available
+  omi.append(
+    menu.SimpleAdjuster( om, hal,
+      prio=HAL_PRIORITY_MENU+2,
+      title='XP',
+      get_cur=lambda: char.stats['xp'],
+      set_abs=lambda x : char.set_numeric_item( 'xp', x )
+    )
+  )
+  
+  return om
+
+# Used by stable and deathsaves submenus
+def _menuitem_heal( hal, char, parent ) -> menu.SimpleAdjuster:
+  return menu.SimpleAdjuster( parent, hal,
+    prio=HAL_PRIORITY_MENU+3,
+    title='Heal',
+    get_cur=lambda: char.stats['hp'][0],
+    set_rel=char.heal,
+    adj_rel = lambda d : char.show_hp( char.stats['hp'][0] + char.stats['hp'][2] + d ),
+    min_d=0,
+    max_d=None,
+    min=0,
+    max=char.stats['hp'][1]
+  )
+
+# Normal health menu.  Damage, Heal, Temp HP
+def _submenu_health_stable( hal, char, parent ) -> menu.SubMenu:
+  
+  submenu = menu.SubMenu( parent, hal,
     prio=HAL_PRIORITY_MENU+2,
     title='Health'
   )
   smm = submenu.menu
   smi = smm.items
-  omi.append( submenu )
+  
   #
   smi.append(
     menu.DoubleAdjuster( smm, hal,
@@ -95,17 +183,7 @@ def make_oled_menu( hal, char, parent ) -> menu.ScrollingOledMenu:
     )
   )
   smi.append(
-    menu.SimpleAdjuster( smm, hal,
-      prio=HAL_PRIORITY_MENU+3,
-      title='Heal',
-      get_cur=lambda: char.stats['hp'][0],
-      set_rel=char.heal,
-      adj_rel = lambda d : char.show_hp( char.stats['hp'][0] + char.stats['hp'][2] + d ),
-      min_d=0,
-      max_d=None,
-      min=0,
-      max=char.stats['hp'][1]
-    )
+    _menuitem_heal( hal, char, smm )
   )
   smi.append(
     menu.SimpleAdjuster( smm, hal,
@@ -116,15 +194,86 @@ def make_oled_menu( hal, char, parent ) -> menu.ScrollingOledMenu:
     )
   )
   
-  ## Money submenu
-  #
-  submenu = menu.SubMenu( om, hal,
+  return submenu
+
+# Reduced health menu:  Stabilise or Heal.
+def _submenu_health_deathsaves( hal, char, parent ) -> menu.SubMenu:
+  
+  submenu = menu.SubMenu( parent, hal,
+    prio=HAL_PRIORITY_MENU+2,
+    title='Health'
+  )
+  smm = submenu.menu
+  smi = smm.items
+  
+  # Stabilise
+  smi.append(
+   menu.FunctionConfirmer( smm, hal,
+      prio=HAL_PRIORITY_MENU+3,
+      title='Stabilise',
+      confirmation='Stabilise?',
+      con_func=char.stabilise
+    )
+  )
+  
+  # Heal
+  smi.append(
+    _menuitem_heal( hal, char, smm )
+  )
+  
+  return submenu
+
+# Resurrection menu (used instead of health if char is dead)
+def _submenu_resurrection( hal, char, parent ) -> menu.SubMenu:
+  
+  submenu = menu.SubMenu( parent, hal,
+    prio=HAL_PRIORITY_MENU+2,
+    title='Resurrection'
+  )
+  smm = submenu.menu
+  smi = smm.items
+  
+  # Restore
+  def r(full:bool):
+    
+    # Restore at full HP?
+    if full:
+      hp = char.stats['hp'][1]
+    else:
+      hp = 1
+    
+    # Do it
+    char.stats['hp'][0] = hp
+    char.stabilise()
+    
+  smi.append(
+   menu.FunctionConfirmer( smm, hal,
+      prio=HAL_PRIORITY_MENU+3,
+      title='Restore 1 HP',
+      confirmation='Restore 1 HP?',
+      con_func=lambda : r(False)
+    )
+  )
+  smi.append(
+   menu.FunctionConfirmer( smm, hal,
+      prio=HAL_PRIORITY_MENU+3,
+      title='Restore Full HP',
+      confirmation='Restore full HP?',
+      con_func=lambda : r(True)
+    )
+  )
+  
+  return submenu
+
+def _submenu_money( hal, char, parent ) -> menu.SubMenu:
+  
+  submenu = menu.SubMenu( parent, hal,
     prio=HAL_PRIORITY_MENU+2,
     title='Currency'
   )
   smm = submenu.menu
   smi = smm.items
-  omi.append( submenu )
+  
   #
   smi.append(
     menu.SimpleAdjuster( smm, hal,
@@ -167,15 +316,17 @@ def make_oled_menu( hal, char, parent ) -> menu.ScrollingOledMenu:
     )
   )
   
-  ## Rest/reset submenu
-  #
-  submenu = menu.SubMenu( om, hal,
+  return submenu
+
+def _submenu_rest_reset( hal, char, parent ) -> menu.SubMenu:
+  
+  submenu = menu.SubMenu( parent, hal,
     prio=HAL_PRIORITY_MENU+2,
     title='Rest & Reset'
   )
   smm = submenu.menu
   smi = smm.items
-  omi.append( submenu )
+  
   #
   smi.append(
     menu.FunctionConfirmer( smm, hal,
@@ -219,14 +370,4 @@ def make_oled_menu( hal, char, parent ) -> menu.ScrollingOledMenu:
     )
   )
   
-  # XP is its own thing
-  omi.append(
-    menu.SimpleAdjuster( om, hal,
-      prio=HAL_PRIORITY_MENU+2,
-      title='XP',
-      get_cur=lambda: char.stats['xp'],
-      set_abs=lambda x : char.set_numeric_item( 'xp', x )
-    )
-  )
-  
-  return om
+  return submenu

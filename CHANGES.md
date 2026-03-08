@@ -1,39 +1,5 @@
 TODO
 ====
-* Death saves:
-  - character.py has to drive the menu
-    - On load, char knows what set of menus to load into
-    - On death, the trigger to change menus comes from within char
-    - In future, other rulesets (determined by char) will need different menu sets
-    - SO:
-      - gadget.play_screen() still exists
-      - Most of the menu code moves into character.py
-      - play_screen() triggers char object to set up menus etc through a new Character method
-      - play_screen hands char object the system menu (or its constructor function) to tack onto the end
-      - State transitions within play (saves/stabilise/death) handled within char
-      - char needs destructor function that gadget can call if top-level state change is needed
-  - Function to set up menus for saves.  Prob need new operating mode for this
-    - Successes ....-> stablise at zero
-    - Failures ....-> Transition to Dead
-    - Stabilise at zero
-    - Stabilise by healing
-  - Ditto for dead.  Options to restore at 1 HP, or restore at full HP.
-    - "This character is dead"
-    - return to select character screen
-    - Restore at 1 hp
-    - Restore at full hp
-  - Implement state machine
-    - 2 levels:
-      - Choose character
-      - Play screen
-        - Stable (normal play)
-        - Death saves
-        - Dead
-    - Each state has setup and destroy functions, bound to common reference points
-    - Make explicit when a function is a setup function
-    - Setup functions for a state at a given level are responsible for calling the destroy function
-    - Destroy functions for an upper level are responsible for calling the destroy function for the level below them
-    - Setup function for a level that has sub-levels is responsible for calling the setup function for the default/appropriate sublevel
 * Combine 'charges' and other counters (gold, xp etc.)
   - 'max' property is optional
   - Assume zero minimum
@@ -45,13 +11,23 @@ TODO
   - Rationalise character load-in and matrix geometry calculation:
     - Both of these have opinions about how many charges are permissible
     - These opinions should always match, or better yet come from the same source
+* Rework savefile structure to include level options (refer to Github issue)
+- Approx 10k heap being lost every time the char select screen is returned to.
+  - Is a ref to char being preserved in the saver?
+  - How about other async runners, do they get stopped?
 - character.py saving:
   - self._saver.untouch() after saving
   - self._saver.untouch() upon exiting playscreen
   - save_now() should check self._dirty before doing anything?
+- Death saves wishlist:
+  - Better eink graphics to really sell the peril
+  - Better deathsaves matrix menu, current one is a bit basic and underwhelming
+- character.py:
+  - Make play() be _playscreen() and remove self._active, once known stable
+  - Change death object to stop using words? (memory saving)  Can use const() to make indexes readable
 - Prompt to add health after spending hit dice on short rest
 - hw.py: Make 'low battery' threshold a round percentage instead of a voltage value
-- Add ability to adjust max HP during play
+* Add ability to adjust max HP during play
   - Store original max hp
   - Record new max hp - absolute or relative?
   - Existing HP is not affected by max hp change except for getting clamped.  Health is conserved quantity, not damage.
@@ -61,14 +37,14 @@ TODO
   - make _play_screen() in gadget.py selectable (different rulesets will need different menu options)
   - make Character class in character.py selectable (different rulesets will need different character behaviour and save options)
   - everything else should be agnostic to this
-* Smaller NOSD logo for when there's no SD but that's ok
-* Fonts
+- How to handle things that don't regain all charges on reset (eg. Armour of Magical Strength)
+* spell slots can reset on short rest for some classes
+- Smaller NOSD logo for when there's no SD but that's ok
+- Fonts
   - https://github.com/peterhinch/micropython-font-to-py
   - https://github.com/easytarget/microPyEZfonts
   - Honorable mention https://github.com/nickpmulder/ssd1306big/blob/main/ssd1306big.py
   - Review everywhere that text is displayed, lots of 8x8 assumptions everywhere
-- How to handle things that don't regain all charges on reset (eg. Armour of Magical Strength)
-- spell slots can reset on short rest for some classes
 - System menu
   - Add a menu item to view errors that have been caught and logged
   - Add a menu item to take a screenshot
@@ -83,7 +59,6 @@ TODO
     - Tuple would need to be dynamically generated (eg. max hp varies with temp hp)
     - But tuple can be requested as soon as IA goes out of 'reset' state
     - Safe to assume it won't change during the adjustment (just maybe as a consequence of it)
-- System menu > Switch character doesn't always work properly
 - Something calls power_off() in gadget.py when the SD is replugged (but only sometimes!)  What does this?
 - OLED menu and idle screen can draw simultaneously on rare occasions.  Fix this
   - Both SimpleAdjuster.render_title() and _oled_idle_render() call oled.fill(0) before doing anything, so this shouldn't happen
@@ -102,7 +77,6 @@ TODO
   - Read spec for MONO_VLSB [https://docs.micropython.org/en/latest/library/framebuf.html#framebuf.framebuf.MONO_VLSB]
   - Pixel arrangement for oled is *madness*.  Oled gfx assets are small, just img.load() them and use native fb.blit()
   - Maybe instead, just have a 'scratch' framebuffer that's used for all off-screen manipulation, to avoid ad-hoc memory allocation
-- Implement die()
 - Support PNG???
   - https://github.com/remixer-dec/mpy-img-decoder/tree/master
   - Also https://github.com/Scondo/purepng
@@ -113,6 +87,7 @@ Gadget v0.4 - WIP
 
 Gameplay Changes & Bugfixes
 ---------------------------
+* Added support for death saves and permadeath
 * Added support for items that reset at dawn (as opposed to long rest, etc.)
 * Fixed divide by zero errors when only one character is available to pick
 * Added support for tracking Platinum (in the Currency menu)

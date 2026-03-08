@@ -1,7 +1,7 @@
 # Drawing functions
 #
 # T. Lloyd
-# 15 Feb 2026
+# 08 Mar 2026
 
 # Standard libraries
 import micropython
@@ -542,19 +542,23 @@ def draw_play_screen( fb, char, lowbatt=False ):
   
   ######## SPELLS BAR ########
   
-  height = round( _SPL_DY * len(stats['spells']) ) + _SPL_OS
-  fb.rect( 0, _SPL_Y-height-1, _SPL_X+_SPL_W+2, height+2, 0, True )
-  fb.hline( _SPL_X, _SPL_Y, _SPL_W, _SPL_C )
-  fb.vline( _SPL_X+_SPL_W, _SPL_Y, -height-1, _SPL_C )
-  fb.hline( _SPL_X, _SPL_Y-height, _SPL_W, _SPL_C )
-  del height
+  if len(stats['spells']) > 0 and stats['death']['status'] == 'stable':
+    height = round( _SPL_DY * len(stats['spells']) ) + _SPL_OS
+    fb.rect( 0, _SPL_Y-height-1, _SPL_X+_SPL_W+2, height+2, 0, True )
+    fb.hline( _SPL_X, _SPL_Y, _SPL_W, _SPL_C )
+    fb.vline( _SPL_X+_SPL_W, _SPL_Y, -height-1, _SPL_C )
+    fb.hline( _SPL_X, _SPL_Y-height, _SPL_W, _SPL_C )
+    del height
   
   ######## CHARGES ########
+  if stats['death']['status'] == 'stable':
+    for i,chg in enumerate( stats['charges'] ):
+      fb.label( chg['name'], _CHG_X, _CHG_Y+round( _CHG_DY * i ), _CHG_C )
+    del i,chg
+  elif stats['death']['status'] == 'saves':
+    fb.label( 'SUCCESS', _CHG_X, _CHG_Y, 1 )
+    fb.label( 'FAILURE', _CHG_X, _CHG_Y+round( _CHG_DY ), 2 )
   
-  for i,chg in enumerate( stats['charges'] ):
-    fb.label( chg['name'], _CHG_X, _CHG_Y+round( _CHG_DY * i ), _CHG_C )
-  del i,chg
-
   ######## HP BAR ########
   
   # Make way for the ginormous function
