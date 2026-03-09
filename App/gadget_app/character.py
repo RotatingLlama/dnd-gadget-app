@@ -1,7 +1,7 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 08 Mar 2026
+# 09 Mar 2026
 
 # Builtin libraries
 import os
@@ -58,15 +58,6 @@ def val_zstr(s,t):
   if type(s) is not str:
     return 'Bad '+t
 
-# Check an integer: correct type and > 0
-#def val_pint(v,t):
-#  try:
-#    v = int(v)
-#  except ValueError:
-#    return t+' must be integer'
-#  if v <= 0:
-#    return t+' must be > 0'
-
 # Check an integer: correct type and >= 0
 def val_zpint(v,t):
   try:
@@ -100,8 +91,10 @@ PARAMS = {
 # hal: The HAL object from hal.py
 # sd_mounted: A callable which will return a boolean indicating whether the SD card is ready for read/write
 # chardir: Path object to the character directory
+# sysmenu_factory: A function that returns a menu.SubMenu object for appending to the oled menu
+# enable_eink: bool indicating whether to (ever) refesh the eink display.  Useful to save time during debugging.
 class Character:
-  def __init__(self, hal, sd_mounted, chardir:Path, sysmenu_factory:menu.SubMenu, enable_eink=True ):
+  def __init__(self, hal, sd_mounted, chardir:Path, sysmenu_factory, enable_eink=True ):
     
     # Where are my files
     if not chardir.is_dir():
@@ -332,6 +325,9 @@ class Character:
   # Undoes things that were done by play() and triggers a save, if needed
   def end_play(self):
     
+    # Shut this down
+    self._saver.untouch()
+    
     # Make sure everything is saved
     if self._dirty:
       self.save_now()
@@ -449,6 +445,7 @@ class Character:
     
     return True
   
+  # Save now, wherever we can, regardless of whether we need to
   def save_now(self) -> bool:
     
     # If the proper directory is missing, switch to the internal directory
@@ -478,52 +475,10 @@ class Character:
     if not ok:
       return False
     
-    self._dirty = False
-    print('Saved.')
-    return True
-  
-  # DEPRECATED: Use save_now() instead.   Try and save, anywhere, now.
-  def emergency_save(self, dir ) -> bool:
-    raise NotImplementedError()
-    # If our old directory exists, try to do a normal save
-    ok = self.dir.is_dir()
-    if ok:
-      ok = self.save_now()
-    
-    # If that worked, we're done
-    if ok:
-      print('Saved to original character directory.')
-      self._saver.untouch()
-      return True
-    
-    # Original chardir name will become the base of the new filename
-    basename = self.dir.name
-    
-    # Emergency save it is.  Sanity check first
-    dir = Path(dir)
-    if not dir.is_dir():
-      print('Emergency save directory does not exist!')
-      print(dir)
-      return False
-    
-    # Find a filename to save to that doesn't already exist
-    i = 0
-    while True:
-      f = dir / f'{basename}-stats-{i:02}.txt'
-      if not f.exists():
-        break
-      i += 1
-    
-    # Attempt to save to the emergency location
-    if not self._save_file( str(f) ):
-      print('Emergency save FAILED to',f)
-      return False
-    if not try_sync():
-      print('Emergency save failed to sync!')
-      return False
-    
-    print('Emergency save successful:',f)
     self._saver.untouch()
+    self._dirty = False
+    
+    print('Saved.')
     return True
   
   def save(self):

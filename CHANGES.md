@@ -15,14 +15,10 @@ TODO
 - Approx 10k heap being lost every time the char select screen is returned to.
   - Is a ref to char being preserved in the saver?
   - How about other async runners, do they get stopped?
-- character.py saving:
-  - self._saver.untouch() after saving
-  - self._saver.untouch() upon exiting playscreen
-  - save_now() should check self._dirty before doing anything?
 - Death saves wishlist:
   - Better eink graphics to really sell the peril
   - Better deathsaves matrix menu, current one is a bit basic and underwhelming
-- character.py:
+* character.py:
   - Make play() be _playscreen() and remove self._active, once known stable
   - Change death object to stop using words? (memory saving)  Can use const() to make indexes readable
 - Prompt to add health after spending hit dice on short rest
