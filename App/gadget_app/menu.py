@@ -2,7 +2,7 @@
 # For OLED and LED Matrix displays
 #
 # T. Lloyd
-# 31 Jan 2026
+# 13 Mar 2026
 
 from .common import DeferredTask
 
@@ -11,6 +11,7 @@ from .common import DeferredTask
 # This is called from the app, and should cause the root menu
 # to tidy up its CRs etc and die cleanly.
 
+# TODO: If a root menu is just deleted, and garbage-collected, what happens to the CRs of its children?
 
 # Drives the needle to select from a number of equally-spaced positions across its arc.
 # Acts as a root menu, does not have a parent.
@@ -661,8 +662,8 @@ class FunctionConfirmer(_OledMenuItem):
     oled.show()
   
   def btn(self):
-    self.c_func()
     self.exit()
+    self.c_func()
 
 # A menu item to launch a submenu.
 # Lightweight wrapper to translate from _OledMenuItem instance to new OledMenu instance
