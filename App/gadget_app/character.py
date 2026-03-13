@@ -1,7 +1,7 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 09 Mar 2026
+# 13 Mar 2026
 
 # Builtin libraries
 import os
@@ -126,12 +126,10 @@ class Character:
     
     # Whenever anything updates self.stats, it also calls self.save()
     # self.save() calls self._saver.touch() and sets self._dirty
-    # self.is_saving() indicates if we are waiting to do a deferred save
     # self._dirty indicates whether we have unsaved data
     
     # Save tracking
     self._saver = DeferredTask( timeout=_SAVE_TIMEOUT, callback=self.save_now )
-    self.is_saving = self._saver.is_dirty
     self._dirty = False
     
     # UI tracking
