@@ -1,5 +1,10 @@
 TODO
 ====
+* MEMORY LEAKS
+  - Free memory is never fully recovered when cycling through slect character / playscreen multiple times.
+  - Appears to be caused by Character object never being fully dereferenced, possibly related to closures/menu objects
+  - Happens even with Character._saver completedly commented out.  So it's not asyncio hanging onto the ref
+  - Look into how the GC Finalizer table works.  May act as a canary for when objects are GC'd
 * Combine 'charges' and other counters (gold, xp etc.)
   - 'max' property is optional
   - Assume zero minimum
@@ -13,14 +18,16 @@ TODO
     - These opinions should always match, or better yet come from the same source
 * Rework savefile structure to include level options (refer to Github issue)
 - Approx 10k heap being lost every time the char select screen is returned to.
-  - Is a ref to char being preserved in the saver?
-  - How about other async runners, do they get stopped?
+  - All chars loaded for the select screen stay in memory forever.  What keeps them reachable?
+  - Do model experiment where each 'char' allocates a large bytearray.  Try to replicate.
 - Death saves wishlist:
   - Better eink graphics to really sell the peril
   - Better deathsaves matrix menu, current one is a bit basic and underwhelming
 * character.py:
   - Make play() be _playscreen() and remove self._active, once known stable
+  - Only activate _saver on play(), and deactivate it on end_play()
   - Change death object to stop using words? (memory saving)  Can use const() to make indexes readable
+  - save_now() add optional force arg, otherwise do nothing unless char is dirty
 - Prompt to add health after spending hit dice on short rest
 - hw.py: Make 'low battery' threshold a round percentage instead of a voltage value
 * Add ability to adjust max HP during play
@@ -45,6 +52,7 @@ TODO
   - Add a menu item to view errors that have been caught and logged
   - Add a menu item to take a screenshot
 - Way to skip character select screen and just go to last played
+- menu.py: If a root menu is just deleted, and garbage-collected, what happens to the CRs of its children?
 - menu.py fast scrolling should trigger on more predictable intervals
   - eg. 40, 400, 4000 etc.
   - Instead of after n rotations, leading to 40, 440, 4440, etc.
@@ -87,6 +95,7 @@ Gameplay Changes & Bugfixes
 * Added support for items that reset at dawn (as opposed to long rest, etc.)
 * Fixed divide by zero errors when only one character is available to pick
 * Added support for tracking Platinum (in the Currency menu)
+* Fixed memory (reference) leak where the list of discovered characters would persist in memory even after one is chosen, and never be garbage collected
 
 Visible Changes
 ---------------

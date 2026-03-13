@@ -2,7 +2,7 @@
 # For Micropython v1.26
 #
 # T. Lloyd
-# 08 Mar 2026
+# 13 Mar 2026
 
 
 # TO USE:
@@ -16,7 +16,7 @@
 
 # Builtin libraries
 import asyncio
-from gc import collect as gc_collect
+from gc import collect as gc_collect, mem_free as gc_mfree
 import vfs
 from micropython import const, mem_info
 import micropython
@@ -51,6 +51,11 @@ _EINK_BLANK_MS = const(15700)
 # Make this object here because it's used in a few places
 INTERNAL_SAVEDIR = Path(INTERNAL_SAVEDIR)
 
+def memtag(t):
+  gc_collect()
+  print(t, 'Mem free:', gc_mfree() )
+  #mem_info()
+
 class Gadget:
   
   def __init__(self, x=None ):
@@ -62,6 +67,8 @@ class Gadget:
     
     # Things we want to keep track of
     self.file_root = Path( SD_ROOT ) / SD_DIR
+    self._charselect_menu = None
+    self._chars = [] # Remove need to keep this list in closures, so it can actuaaly be garbage collected
     self.character = None
     self.sd_ok = asyncio.Event()
     self.sd_gone = asyncio.Event()
@@ -154,6 +161,7 @@ class Gadget:
   # Sets up the character select screen
   def select_character(self):
     
+    memtag('select_character() before cleanup')
     self.cleanup()
     
     # Sanity check (did cleanup() do its job?)
@@ -166,58 +174,28 @@ class Gadget:
     
     # Takes a framebuffer and a list of chars to show
     # Returns as many chars as it actually did show
-    gc_collect()
-    mem_info()
-    chars = gfx.draw_char_select( self.hal.eink, self._find_chars() )
+    memtag('select_character() before chars')
+    self._chars = gfx.draw_char_select( self.hal.eink, self._find_chars() )
+    memtag('select_character() after chars')
     
     if not _DEBUG_DISABLE_EINK:
       self.hal.eink_send_refresh()
     
-    # Gets called when the button is pressed, gets passed a numeric index
-    def choose( i:int ):
-      nonlocal chars
-      
-      # Ignore call if the character's directory has gone away
-      if not chars[i].dir.is_dir():
-        return
-      
-      # Set the character
-      self.character = chars[i]
-      print( self.character.stats )
-      
-      # No longer need this
-      del chars
-      gc_collect()
-      mem_info()
-      
-      # Launch the play screen constructor
-      self.play_screen()
-    
     # If we have *no* characters, don't try to index into an empty list
-    if len(chars) > 0:
-      btn = choose
+    if len(self._chars) > 0:
+      btn = self._set_char_cb
     else:
       btn = lambda i: None
       self.needle_wander(True)
     
     # Set up the character chooser needle
-    rootmenu = menu.NeedleMenu(
+    self._charselect_menu = menu.NeedleMenu(
       hal = self.hal,
       prio = HAL_PRIORITY_MENU,
-      n = len(chars),
+      n = len(self._chars),
       btn = btn,
       back = lambda x: self.power_off() # lambda x: self.hal.needle.wobble() # self.hal.hw.empty_battery.set()
     )
-    
-    # Function to clean up this character picker instance
-    def end():
-      self.needle_wander(False)
-      rootmenu.destroy()
-      self.play_wait_ani.clear()
-      #self.stop_ani()
-      self.cleanup = lambda : None
-      self.sd_plug = lambda : None
-      self.sd_unplug = lambda : None
     
     # If the SD card is unplugged, wiggle the needle to indicate
     # self._set_char() will exit silently if it's triggered with no SD card in place
@@ -229,7 +207,35 @@ class Gadget:
     self.sd_plug = self.select_character
     
     # Register the destructor
-    self.cleanup = end
+    self.cleanup = self._cleanup_charselect
+  
+  # Pick one of self._chars, set self.character to it, and call play_screen()
+  # Destroys self._chars
+  def _set_char_cb(self, i:int ):
+    
+    # Ignore call if the character's directory has gone away
+    if not self._chars[i].dir.is_dir():
+      return
+    
+    # Set the character
+    self.character = self._chars[i]
+    print( self.character.stats )
+    
+    # Blank out chars object
+    self._chars = []
+    
+    # Launch the play screen constructor
+    self.play_screen()
+    
+  def _cleanup_charselect(self):
+    self.needle_wander(False)
+    self._charselect_menu.destroy()
+    self._charselect_menu = None
+    self.play_wait_ani.clear()
+    #self.stop_ani()
+    self.cleanup = lambda : None
+    self.sd_plug = lambda : None
+    self.sd_unplug = lambda : None
   
   # Generate the System submenu (to put at the end of the oled menu)
   def _make_system_submenu(self, parent ) -> menu.SubMenu:
@@ -289,30 +295,30 @@ class Gadget:
       raise RuntimeError('Tried to enter play screen with no character set')
     
     # Clean up the previous stuff
+    memtag('play_screen() before cleanup')
     self.cleanup()
+    memtag('play_screen() after cleanup')
     
     # Set everything up
     self.character.play()
-    #mem_info(1)
-    
-    # Tidies up things that were set by play_screen() and triggers a save, if needed
-    def end():
-      
-      # Make sure everything is saved and UI cleaned up
-      self.character.end_play()
-      
-      # Wipe the character object
-      self.character = None
-      
-      # Nothing left to clean up
-      self.cleanup = lambda : None
-      
-      gc_collect()
+    memtag('play_screen() after char.play()')
     
     # Assign
-    #self.sd_plug = lambda : None
-    #self.sd_unplug = lambda : None
-    self.cleanup = end
+    self.cleanup = self._cleanup_playscreen
+  
+  # Undoes the things done by play_screen()
+  def _cleanup_playscreen(self):
+    
+    if self.character is None:
+      return
+    
+    # Make sure everything is saved and UI cleaned up
+    self.character.end_play()
+    
+    # Wipe the character object
+    self.character = None
+    
+    gc_collect()
   
   # Start everything, keep refs to looping tasks
   async def start_app(self):
