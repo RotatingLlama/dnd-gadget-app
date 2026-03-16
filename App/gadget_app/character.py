@@ -1,7 +1,7 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 13 Mar 2026
+# 16 Mar 2026
 
 # Builtin libraries
 import os
@@ -129,7 +129,7 @@ class Character:
     # self._dirty indicates whether we have unsaved data
     
     # Save tracking
-    self._saver = DeferredTask( timeout=_SAVE_TIMEOUT, callback=self.save_now )
+    self._saver = None # The actual saver will get added later
     self._dirty = False
     
     # UI tracking
@@ -308,11 +308,14 @@ class Character:
     })
   
   # Constructs the play screen and menus
-  def play(self):
+  def activate(self):
     
     # Sanity
     if self._active:
-      raise RuntimeError('Character.play() called twice')
+      raise RuntimeError('Tried to activate an already-active character')
+    
+    # Set up the saver (continuously runs as an async task)
+    self._saver = DeferredTask( timeout=_SAVE_TIMEOUT, callback=self.save_now )
     
     # We are active
     self._active = True
@@ -320,15 +323,17 @@ class Character:
     # Go
     self._playscreen()
   
-  # Undoes things that were done by play() and triggers a save, if needed
-  def end_play(self):
-    
-    # Shut this down
-    self._saver.untouch()
+  # Undoes things that were done by activate() and triggers a save, if needed
+  def destroy(self):
     
     # Make sure everything is saved
     if self._dirty:
       self.save_now()
+    
+    # Shut this down cleanly and permit GC
+    if self._saver is not None:
+      self._saver.destroy()
+      self._saver = None
     
     # Tidy up UI elements
     self._cleanup_ui()
@@ -398,7 +403,7 @@ class Character:
     # Assign
     self._rootmenu = rootmenu
     
-    #
+    # We used a lot of memory setting everything up.  Free now what we can.
     gc_collect()
   
   # Tidies up things that were set by _playscreen()

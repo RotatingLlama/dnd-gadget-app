@@ -1,10 +1,5 @@
 TODO
 ====
-* MEMORY LEAKS
-  - Free memory is never fully recovered when cycling through slect character / playscreen multiple times.
-  - Appears to be caused by Character object never being fully dereferenced, possibly related to closures/menu objects
-  - Happens even with Character._saver completedly commented out.  So it's not asyncio hanging onto the ref
-  - Look into how the GC Finalizer table works.  May act as a canary for when objects are GC'd
 * Combine 'charges' and other counters (gold, xp etc.)
   - 'max' property is optional
   - Assume zero minimum
@@ -17,15 +12,10 @@ TODO
     - Both of these have opinions about how many charges are permissible
     - These opinions should always match, or better yet come from the same source
 * Rework savefile structure to include level options (refer to Github issue)
-- Approx 10k heap being lost every time the char select screen is returned to.
-  - All chars loaded for the select screen stay in memory forever.  What keeps them reachable?
-  - Do model experiment where each 'char' allocates a large bytearray.  Try to replicate.
 - Death saves wishlist:
   - Better eink graphics to really sell the peril
   - Better deathsaves matrix menu, current one is a bit basic and underwhelming
 * character.py:
-  - Make play() be _playscreen() and remove self._active, once known stable
-  - Only activate _saver on play(), and deactivate it on end_play()
   - Change death object to stop using words? (memory saving)  Can use const() to make indexes readable
   - save_now() add optional force arg, otherwise do nothing unless char is dirty
 - Prompt to add health after spending hit dice on short rest
@@ -52,7 +42,6 @@ TODO
   - Add a menu item to view errors that have been caught and logged
   - Add a menu item to take a screenshot
 - Way to skip character select screen and just go to last played
-- menu.py: If a root menu is just deleted, and garbage-collected, what happens to the CRs of its children?
 - menu.py fast scrolling should trigger on more predictable intervals
   - eg. 40, 400, 4000 etc.
   - Instead of after n rotations, leading to 40, 440, 4440, etc.
@@ -64,6 +53,7 @@ TODO
     - But tuple can be requested as soon as IA goes out of 'reset' state
     - Safe to assume it won't change during the adjustment (just maybe as a consequence of it)
 - Something calls power_off() in gadget.py when the SD is replugged (but only sometimes!)  What does this?
+- Memory leak: few hundred bytes less memory every select char - select new char loop
 - OLED menu and idle screen can draw simultaneously on rare occasions.  Fix this
   - Both SimpleAdjuster.render_title() and _oled_idle_render() call oled.fill(0) before doing anything, so this shouldn't happen
   - Neither of the above functions are coroutines or yield during execution
@@ -95,7 +85,7 @@ Gameplay Changes & Bugfixes
 * Added support for items that reset at dawn (as opposed to long rest, etc.)
 * Fixed divide by zero errors when only one character is available to pick
 * Added support for tracking Platinum (in the Currency menu)
-* Fixed memory (reference) leak where the list of discovered characters would persist in memory even after one is chosen, and never be garbage collected
+* Fixed reference leaks that caused Characters to stay in memory forever whenever they were instantiated
 
 Visible Changes
 ---------------

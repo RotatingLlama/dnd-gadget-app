@@ -2,7 +2,7 @@
 # For OLED and LED Matrix displays
 #
 # T. Lloyd
-# 13 Mar 2026
+# 16 Mar 2026
 
 from .common import DeferredTask
 
@@ -10,8 +10,6 @@ from .common import DeferredTask
 # Must at minimum have a destroy() method.
 # This is called from the app, and should cause the root menu
 # to tidy up its CRs etc and die cleanly.
-
-# TODO: If a root menu is just deleted, and garbage-collected, what happens to the CRs of its children?
 
 # Drives the needle to select from a number of equally-spaced positions across its arc.
 # Acts as a root menu, does not have a parent.
@@ -85,8 +83,9 @@ class RootMenu:
   def __init__(self,hal,prio,*args,**kwargs):
     self.hal = hal
     
-    # This list isn't used by anything in menu.py,
-    # but provides a place to store refs to children so they don't get garbage collected
+    # This list:
+    # - Provides a place to store refs to children so they don't get garbage collected
+    # - Permits destroy() to cascade through them when we _want_ them to be garbage-collected
     self.menus = []
     
     self._cr = self.hal.register(
@@ -119,6 +118,9 @@ class RootMenu:
     if self._cr is not None:
       self.hal.unregister( self._cr )
       self._cr = None
+    for m in self.menus:
+      m.destroy()
+    self.menus = []
 
 
 class OledMenu:
@@ -227,6 +229,12 @@ class OledMenu:
   def _leave(self):
     self.s = None
     self._unregister()
+  
+  def destroy(self):
+    self._leave()
+    for i in self.items:
+      i.destroy()
+    self.items = []
 
 # Same as OledMenu but shows multiple entries and scrolls them
 class ScrollingOledMenu(OledMenu):
@@ -370,6 +378,9 @@ class _OledMenuItem:
     self._leave()
   
   def _leave(self):
+    self._unregister()
+  
+  def destroy(self):
     self._unregister()
 
 # For adjusting numeric values
@@ -751,6 +762,7 @@ class MatrixMenu:
       self.next_item # ccw
     )
     self._cr = None
+    self._destroyed = False
   
   def _register(self):
     if self._cr is not None:
@@ -815,13 +827,15 @@ class MatrixMenu:
   
   def inc(self):
     self.to.touch()
-    self.f_inc( self.active_rows[self.r] )
-    self._update_mtx()
+    self.f_inc( self.active_rows[self.r] ) # This user-supplied function is allowed to destroy the menu
+    if not self._destroyed:
+      self._update_mtx() # We can't update the matrix if we've been destroyed
   
   def dec(self):
     self.to.touch()
     self.f_dec( self.active_rows[self.r] )
-    self._update_mtx()
+    if not self._destroyed: # See inc() for notes on this
+      self._update_mtx()
   
   def _update_mtx(self):
     self.f_redraw()
@@ -832,6 +846,15 @@ class MatrixMenu:
     self.r = None
     self.to.untouch()
     self._unregister()
+  
+  def destroy(self):
+    self.exit()
+    self.to.destroy()
+    self.to = None
+    self.f_inc = DEADMENU
+    self.f_dec = DEADMENU
+    self.f_redraw = DEADMENU
+    self._destroyed = True
 
 
 class IncrementAccelerator:
@@ -883,3 +906,7 @@ class IncrementAccelerator:
     
     # Call the handler
     self.cb( self._incs[ self.currlevel ] * s )
+
+# Function to replace callbacks with after an object has been destroyed
+def DEADMENU():
+  raise RuntimeError('This menu has been destroyed')

@@ -1,7 +1,7 @@
 # Misc common data and code
 #
 # T. Lloyd
-# 23 Nov 2025
+# 16 Mar 2026
 
 from micropython import const
 import asyncio
@@ -29,12 +29,17 @@ CHAR_BG = const('background.pi')
 # Countdown can be cancelled with untouch()
 # Requires timeout, number of milliseconds to count down before executing
 # callback, a callable that will get run and is not passed any args.
+# NOTE: A running DeferredTask may prevent garbage collection, by keeping context in the callback function.
+# Use destroy() to halt the async loop and let gc to its thing.
 class DeferredTask:
   def __init__(self, timeout:int, callback, poll:int=200):
     self.timeout = timeout
     self.callback = callback
     self._last_touch = None
-    self._timeout_task = asyncio.create_task( self._timeout_watcher(poll) )
+    self._destroy_trigger = asyncio.ThreadSafeFlag() # This will trigger the async loop to exit safely
+    self._timeout_task = asyncio.create_task( self._timeout_watcher(poll) ) # Main loop
+    self._dwt = asyncio.create_task( self._timeout_watcher(poll) ) # Reacts to the kill-trigger
+    self._active = True
   
   # Run as a polling loop because Task.cancel() doesn't work (as of MP 1.24.1)
   async def _timeout_watcher(self, poll:int ):
@@ -57,15 +62,34 @@ class DeferredTask:
         # Reset
         self._last_touch = None
   
+  # Calling cancel() from non-async code seems to cause problems:
+  # RuntimeError: can't cancel self
+  # https://github.com/orgs/micropython/discussions/15601
+  async def _destroy_waiter(self):
+    await self._destroy_trigger.wait()
+    self._timeout_task.cancel()
+    
   # Are we counting down right now?
   def is_dirty(self):
     return self._last_touch is not None
   
   # Set/update the timeout
   def touch(self):
+    if not self._active:
+      raise RuntimeError('Tried to touch an inactive DeferredTask')
     self._last_touch = time.ticks_ms()
   
   # Cancel any timeout
   def untouch(self):
     self._last_touch = None
   
+  # Is the DeferredTask still running?  (Not been destroyed)
+  def is_active(self):
+    return self._active
+  
+  # Terminate (clean everything up and allow garbage collection)
+  def destroy(self):
+    self.untouch()
+    self._destroy_trigger.set()
+    self.callback = None
+    self._active = False
