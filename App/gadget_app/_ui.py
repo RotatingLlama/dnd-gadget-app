@@ -2,7 +2,7 @@
 # Consider as part of character.py
 #
 # T. Lloyd
-# 08 Mar 2026
+# 19 Mar 2026
 
 from micropython import const
 
@@ -12,6 +12,13 @@ from . import menu
 # Matrix adjust timeout, in ms
 _MTX_TIMEOUT = const(3000)
 
+# Constants
+_DEATH_STATUS = const(0)
+_DEATH_OK = const(1)
+_DEATH_NG = const(2)
+_DEATH_STAT_OK = const(0)
+_DEATH_STAT_SV = const(1)
+_DEATH_STAT_DD = const(2)
 
 def make_matrix_menu_stable( hal, char ) -> menu.MatrixMenu:
   
@@ -70,7 +77,7 @@ def make_matrix_menu_saves( hal, char ) -> menu.MatrixMenu:
     
     char.set_deathsaves(
       success = (not row), # Transform row number into success boolean
-      val = n + char.stats['death'][ ('successes','failures')[row] ],
+      val = n + char.stats['death'][ ( _DEATH_OK, _DEATH_NG )[row] ],
       show = True
     )
   
@@ -103,11 +110,11 @@ def make_oled_menu( hal, char, parent ) -> menu.ScrollingOledMenu:
   omi = om.items
   
   # Health submenu
-  if death['status'] == 'stable':
+  if death[_DEATH_STATUS] == _DEATH_STAT_OK:
     # Use the normal damage/heal/temphp submenu
     omi.append( _submenu_health_stable( hal, char, om ) )
-  elif death['status'] == 'saves':
-    if death['failures'] < 3:
+  elif death[_DEATH_STATUS] == _DEATH_STAT_SV:
+    if death[_DEATH_NG] < 3:
       # Use the reduced stabilise/heal submenu
       omi.append( _submenu_health_deathsaves( hal, char, om ) )
     else:
@@ -120,7 +127,7 @@ def make_oled_menu( hal, char, parent ) -> menu.ScrollingOledMenu:
           con_func=char.die
         )
       )
-  elif death['status'] == 'dead':
+  elif death[_DEATH_STATUS] == _DEATH_STAT_DD:
     # Resurrection menu
     omi.append( _submenu_resurrection( hal, char, om ) )
   
@@ -128,7 +135,7 @@ def make_oled_menu( hal, char, parent ) -> menu.ScrollingOledMenu:
   omi.append( _submenu_money( hal, char, om ) )
   
   # Rest/reset submenu - only appplies when stable
-  if death['status'] == 'stable':
+  if death[_DEATH_STATUS] == _DEATH_STAT_OK:
     omi.append( _submenu_rest_reset( hal, char, om ) )
   
   # XP is its own thing - always available

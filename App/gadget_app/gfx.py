@@ -1,7 +1,7 @@
 # Drawing functions
 #
 # T. Lloyd
-# 08 Mar 2026
+# 19 Mar 2026
 
 # Standard libraries
 import micropython
@@ -89,6 +89,14 @@ _SPL_Y  = const( _EINK_HEIGHT - 1 )
 _SPL_DY = const(12)
 _SPL_OS = const(-8)
 _SPL_C  = const(1)
+
+# Character constants
+_DEATH_STATUS = const(0)
+#_DEATH_OK = const(1)
+#_DEATH_NG = const(2)
+_DEATH_STAT_OK = const(0)
+_DEATH_STAT_SV = const(1)
+#_DEATH_STAT_DD = const(2)
 
 # Rules (LUTs) for chaos_fill()
 # Each is 64 elements long, defining a value for every possible combination of 6 bits
@@ -542,7 +550,7 @@ def draw_play_screen( fb, char, lowbatt=False ):
   
   ######## SPELLS BAR ########
   
-  if len(stats['spells']) > 0 and stats['death']['status'] == 'stable':
+  if len(stats['spells']) > 0 and stats['death'][_DEATH_STATUS] == _DEATH_STAT_OK:
     height = round( _SPL_DY * len(stats['spells']) ) + _SPL_OS
     fb.rect( 0, _SPL_Y-height-1, _SPL_X+_SPL_W+2, height+2, 0, True )
     fb.hline( _SPL_X, _SPL_Y, _SPL_W, _SPL_C )
@@ -551,11 +559,11 @@ def draw_play_screen( fb, char, lowbatt=False ):
     del height
   
   ######## CHARGES ########
-  if stats['death']['status'] == 'stable':
+  if stats['death'][_DEATH_STATUS] == _DEATH_STAT_OK:
     for i,chg in enumerate( stats['charges'] ):
       fb.label( chg['name'], _CHG_X, _CHG_Y+round( _CHG_DY * i ), _CHG_C )
     del i,chg
-  elif stats['death']['status'] == 'saves':
+  elif stats['death'][_DEATH_STATUS] == _DEATH_STAT_SV:
     fb.label( 'SUCCESS', _CHG_X, _CHG_Y, 1 )
     fb.label( 'FAILURE', _CHG_X, _CHG_Y+round( _CHG_DY ), 2 )
   
