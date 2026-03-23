@@ -16,8 +16,6 @@ TODO
   - Better eink graphics to really sell the peril
   - Better deathsaves matrix menu, current one is a bit basic and underwhelming
 * character.py:
-  - Test loading of savefile death section with invalid/missing values (NOT TESTED since update to use bytearray internally)
-  - CHECK that spell slots are serialised correctly on save!  NOT TESTED
   - save_now() add optional force arg, otherwise do nothing unless char is dirty
 - Prompt to add health after spending hit dice on short rest
 - hw.py: Make 'low battery' threshold a round percentage instead of a voltage value

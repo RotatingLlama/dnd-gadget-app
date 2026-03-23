@@ -1,7 +1,7 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 19 Mar 2026
+# 23 Mar 2026
 
 # Builtin libraries
 import os
@@ -10,11 +10,13 @@ from gc import collect as gc_collect
 import json
 import errno
 
+from array import array
+
 # Our stuff
 from .pathlib import Path # Not a builtin in MicroPython (but mirrors CPython)
 from . import menu
-from . import _ui
-from . import gfx
+from . import _char_menus as _cm
+from . import _char_gfx as gfx
 from .common import DeferredTask, CHAR_STATS, INTERNAL_SAVEDIR, HAL_PRIORITY_MENU, HAL_PRIORITY_IDLE
 
 # When loading from file, load no more than this many of each item
@@ -28,10 +30,10 @@ _SAVE_TIMEOUT = const(30000) # Save contdown, in ms
 _DEATH_STATUS = const(0)
 _DEATH_OK = const(1)
 _DEATH_NG = const(2)
-_DEATH_STAT_OK = const(0)
-_DEATH_STAT_SV = const(1)
-_DEATH_STAT_DD = const(2)
-_DEATH_STATUSES = ('stable','saves','dead')
+_DEATH_STATUS_OK = const(0)
+_DEATH_STATUS_SV = const(1)
+_DEATH_STATUS_DD = const(2)
+_DEATH_STATUS_TUPLE = ('stable','saves','dead')
 
 class CharacterError( RuntimeError ):
   pass
@@ -125,13 +127,7 @@ class Character:
     # Stats
     # This will get populated during load() with all the simple PARAMS (above) so they don't need to be defined here
     # But hp/hd/spell/cherge/death structures need to pre-exist
-    self.stats = {
-      'hp' : [0,0,0,0], # Current, max, temp, orig_temp
-      'hd' : [0,0], # Current, max
-      'spells' : [],
-      'charges' : [],
-      'death' : {},
-    }
+    self.stats = {}
     
     # Whenever anything updates self.stats, it also calls self.save()
     # self.save() calls self._saver.touch() and sets self._dirty
@@ -289,12 +285,12 @@ class Character:
     
     # Get and validate death
     df = fs.get( 'death', {} )
-    di = { 'stable':_DEATH_STAT_OK, 'saves':_DEATH_STAT_SV, 'dead':_DEATH_STAT_DD }
+    di = { 'stable':_DEATH_STATUS_OK, 'saves':_DEATH_STATUS_SV, 'dead':_DEATH_STATUS_DD }
     if type(df) is not dict:
       raise CharacterError( 'Invalid death section' )
     try:
       d = bytearray([
-        di.get( df.get('status','stable'), _DEATH_STAT_OK ),
+        di.get( df.get('status','stable'), _DEATH_STATUS_OK ),
         int( df.get('successes',0) ),
         int( df.get('failures',0) ),
       ])
@@ -368,17 +364,17 @@ class Character:
     rootmenu = menu.RootMenu( hal, HAL_PRIORITY_MENU )
     
     # Set up matrix menu variables based on death status
-    if ds == _DEATH_STAT_OK:
-      mm = _ui.make_matrix_menu_stable( hal, self )
+    if ds == _DEATH_STATUS_OK:
+      mm = _cm.make_matrix_menu_stable( hal, self )
       rootmenu.menus.append(mm)
       mtx_cb = self.draw_mtx_stable
     
-    elif ds == _DEATH_STAT_SV:
-      mm = _ui.make_matrix_menu_saves( hal, self )
+    elif ds == _DEATH_STATUS_SV:
+      mm = _cm.make_matrix_menu_saves( hal, self )
       rootmenu.menus.append(mm)
       mtx_cb = self.draw_mtx_saves
       
-    elif ds == _DEATH_STAT_DD:
+    elif ds == _DEATH_STATUS_DD:
       mtx_cb = self.draw_mtx_dead
     
     # Create default/idle HAL registration
@@ -390,14 +386,14 @@ class Character:
     )
     
     # Oled menu
-    om = _ui.make_oled_menu( hal, self, rootmenu )
+    om = _cm.make_oled_menu( hal, self, rootmenu )
     rootmenu.menus.append(om)
     
     # Add the System menu to the end of the Oled menu
     om.items.append( self._sysmenu_factory(om) )
     
     # Link up the inputs to the root menu
-    if ds == _DEATH_STAT_DD:
+    if ds == _DEATH_STATUS_DD:
       rootmenu.init(
         btn = om.next_item
       )
@@ -446,7 +442,7 @@ class Character:
       'death' : dict(zip(
         ('status','successes','failures'),
         [
-          _DEATH_STATUSES[ s['death'][_DEATH_STATUS] ],
+          _DEATH_STATUS_TUPLE[ s['death'][_DEATH_STATUS] ],
           s['death'][_DEATH_OK],
           s['death'][_DEATH_NG],
         ]
@@ -594,7 +590,7 @@ class Character:
       return
     
     # Can't heal if we're dead
-    if death[_DEATH_STATUS] == _DEATH_STAT_DD or death[_DEATH_NG] >= 3:
+    if death[_DEATH_STATUS] == _DEATH_STATUS_DD or death[_DEATH_NG] >= 3:
       return
     
     # Add the HP
@@ -605,7 +601,7 @@ class Character:
       hp[0] = hp[1]
     
     # If we were in death saves, stabilise
-    if death[_DEATH_STATUS] == _DEATH_STAT_SV:
+    if death[_DEATH_STATUS] == _DEATH_STATUS_SV:
       self.stabilise(show=show)
       return
     
@@ -645,7 +641,7 @@ class Character:
     
     # If we're in death saves, or dead - don't accept damage.
     # Expect user to apply extra failures manually.
-    if self.stats['death'][_DEATH_STATUS] != _DEATH_STAT_OK:
+    if self.stats['death'][_DEATH_STATUS] != _DEATH_STATUS_OK:
       return
     
     # Affects whether we need to update eink
@@ -717,7 +713,7 @@ class Character:
   def _death_status(self, status:int, show=True ):
     
     # Sanity
-    if status not in ( _DEATH_STAT_OK, _DEATH_STAT_SV, _DEATH_STAT_DD ):
+    if status not in ( _DEATH_STATUS_OK, _DEATH_STATUS_SV, _DEATH_STATUS_DD ):
       raise ValueError('Invalid status')
     
     # Localise
@@ -731,7 +727,7 @@ class Character:
     d[_DEATH_STATUS] = status
     d[_DEATH_OK] = 0
     d[_DEATH_NG] = 0
-    print('Set status to', _DEATH_STATUSES[status] )
+    print('Set status to', _DEATH_STATUS_TUPLE[status] )
     self.save()
     
     # Go
@@ -739,11 +735,11 @@ class Character:
   #
   # Conveience functions to trigger status change.  All use _death_status()
   def stabilise(self, show=True ):
-    self._death_status(_DEATH_STAT_OK,show=show)
+    self._death_status(_DEATH_STATUS_OK,show=show)
   def deathsaves(self, show=True ):
-    self._death_status(_DEATH_STAT_SV,show=show)
+    self._death_status(_DEATH_STATUS_SV,show=show)
   def die(self, show=True ):
-    self._death_status(_DEATH_STAT_DD,show=show)
+    self._death_status(_DEATH_STATUS_DD,show=show)
   
   # success determines which track to edit
   # val sets the value.  ABSOLUTE, not incremental.
@@ -754,7 +750,7 @@ class Character:
     d = self.stats['death']
     
     # Sanity
-    if d[_DEATH_STATUS] != _DEATH_STAT_SV:
+    if d[_DEATH_STATUS] != _DEATH_STATUS_SV:
       raise RuntimeError('Attempted to enter death save result when not in death saves!')
     
     # Validate
@@ -867,9 +863,14 @@ class Character:
     hp = self.stats['hp']
     self.show_hp( hp[0] + hp[2] )
   
+  # Gets the max displayable HP value
+  def max_displayable_hp(self):
+    hp = self.stats['hp']
+    return max( hp[1], hp[0] + hp[3] )
+
   # Sets the needle to an arbitrary HP value within range (clamps at min/max)
   def show_hp(self,hp):
-    max_range = gfx.needle_max_range(self.stats['hp'])
+    max_range = self.max_displayable_hp()
     arg = min( hp / max_range, 1)
     arg = max( arg, 0 )
     self.hal.needle.position( arg )
