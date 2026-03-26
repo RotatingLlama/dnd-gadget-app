@@ -1,7 +1,7 @@
 # Drawing functions for character.py
 #
 # T. Lloyd
-# 23 Mar 2026
+# 26 Mar 2026
 
 # Standard libraries
 from micropython import const
@@ -57,7 +57,7 @@ _ARC2_RO = const( _ARC2_RI + _ARC2_THICKNESS)
 _TICK_RI      = const( _RI + _ARC_THICKNESS * 1.4 )
 _TICK_LENGTH  = const( _ARC_THICKNESS * 1.1 )
 _TICK_THICK   = const( _ARC_THICKNESS * 0.5 )
-_TICK_ANGLE   = const( _DEG * 3 )
+#_TICK_ANGLE   = const( _DEG * 3 )
 _TICK_TEXT_PT = const( 8 ) # Pixels past end of tick for text point
 
 # Geometry for titles
@@ -82,13 +82,52 @@ _SPL_DY = const(12)
 _SPL_OS = const(-8)
 _SPL_C  = const(1)
 
-# Character constants
+
+# Indexes into the Character.data object
+_NAME = const(0)
+_TITLE = const(1)
+#_XP = const(2)
+#_CURRENCY = const(3)
+_HP = const(4)
+#_HD = const(5)
+_SPELLS = const(6)
+_CHARGES = const(7)
+_DEATH = const(8)
+#
+#_CURRENCY_COPPER = const(0)
+#_CURRENCY_SILVER = const(1)
+#_CURRENCY_ELECTRUM = const(2)
+#_CURRENCY_GOLD = const(3)
+#_CURRENCY_PLATINUM = const(4)
+#
+_HP_CURR = const(0)
+_HP_MAX = const(1)
+_HP_TEMP = const(2)
+_HP_ORIGTEMP = const(3)
+#
+#_HD_CURR = const(0)
+#_HD_MAX = const(1)
+#
+_SPELLS_CURR = const(0)
+#_SPELLS_MAX = const(1)
+#
+#_CHARGES_CURR = const(0)
+#_CHARGES_MAX = const(1)
+#_CHARGES_RESET = const(2)
+_CHARGES_NAME = const(4)
+#
 _DEATH_STATUS = const(0)
 #_DEATH_OK = const(1)
 #_DEATH_NG = const(2)
-_DEATH_STAT_OK = const(0)
-_DEATH_STAT_SV = const(1)
-#_DEATH_STAT_DD = const(2)
+
+# Codes for Character.data objects
+#_CHARGE_RESET_SR = const(0x01)
+#_CHARGE_RESET_LR = const(0x02)
+#_CHARGE_RESET_DAWN = const(0x04)
+#
+_DEATH_STATUS_OK = const(0)
+_DEATH_STATUS_SV = const(1)
+#_DEATH_STATUS_DD = const(2)
 
 
 # TODO:
@@ -379,8 +418,8 @@ def tick_txt(fb, txt, pt, c ):
 def draw_play_screen( fb, char, lowbatt=False ):
   
   # Localisation
-  stats = char.stats
-  hp = stats['hp']
+  data = char.data
+  hp = data[_HP]
   head = char.dir / CHAR_HEAD
   
   # Character-specific background
@@ -415,26 +454,28 @@ def draw_play_screen( fb, char, lowbatt=False ):
   #f.write_to( fb, 'BONK', *XY, (1,) )
   #f = eink.Font('/assets/Vermin.2f')
   #f.write_to( fb, 'L3 Artificer', XY[0], XY[1]+14, (2,) )
-  fb.label( stats['name'], _X - (chs2+(len(stats['name']) * 8)+5), _TIT_MIDPOINT_Y-4, 1 )
-  if len( stats['title'] ) > 0:
-    fb.label( stats['title'], _X + chs2 + 5, _TIT_MIDPOINT_Y-4, 1 )
+  fb.label( data[_NAME], _X - (chs2+(len(data[_NAME]) * 8)+5), _TIT_MIDPOINT_Y-4, 1 )
+  if len( data[_TITLE] ) > 0:
+    fb.label( data[_TITLE], _X + chs2 + 5, _TIT_MIDPOINT_Y-4, 1 )
   
   ######## SPELLS BAR ########
   
-  if len(stats['spells']) > 0 and stats['death'][_DEATH_STATUS] == _DEATH_STAT_OK:
-    height = round( _SPL_DY * len(stats['spells']) ) + _SPL_OS
+  nsp = len(data[_SPELLS][_SPELLS_CURR])
+  if nsp > 0 and data[_DEATH][_DEATH_STATUS] == _DEATH_STATUS_OK:
+    height = round( _SPL_DY * nsp ) + _SPL_OS
     fb.rect( 0, _SPL_Y-height-1, _SPL_X+_SPL_W+2, height+2, 0, True )
     fb.hline( _SPL_X, _SPL_Y, _SPL_W, _SPL_C )
     fb.vline( _SPL_X+_SPL_W, _SPL_Y, -height-1, _SPL_C )
     fb.hline( _SPL_X, _SPL_Y-height, _SPL_W, _SPL_C )
     del height
+  del nsp
   
   ######## CHARGES ########
-  if stats['death'][_DEATH_STATUS] == _DEATH_STAT_OK:
-    for i,chg in enumerate( stats['charges'] ):
-      fb.label( chg['name'], _CHG_X, _CHG_Y+round( _CHG_DY * i ), _CHG_C )
+  if data[_DEATH][_DEATH_STATUS] == _DEATH_STATUS_OK:
+    for i,chg in enumerate( data[_CHARGES] ):
+      fb.label( chg[_CHARGES_NAME], _CHG_X, _CHG_Y+round( _CHG_DY * i ), _CHG_C )
     del i,chg
-  elif stats['death'][_DEATH_STATUS] == _DEATH_STAT_SV:
+  elif data[_DEATH][_DEATH_STATUS] == _DEATH_STATUS_SV:
     fb.label( 'SUCCESS', _CHG_X, _CHG_Y, 1 )
     fb.label( 'FAILURE', _CHG_X, _CHG_Y+round( _CHG_DY ), 2 )
   
@@ -446,17 +487,17 @@ def draw_play_screen( fb, char, lowbatt=False ):
   # Skull pullback (how far to extend the arc back to meet the skull)
   spb = _APX * 3
   
-  if hp[2] > 0: # If we have temp HP
+  if hp[_HP_TEMP] > 0: # If we have temp HP
     
     # How many HP will our arc(s) represent?
     # Either max HP, or current + temp : whichever is more
     max_range = char.max_displayable_hp()
     
     # Ratios
-    r_half = ( hp[0] / 2 ) / max_range
-    r_curr = hp[0] / max_range
-    r_max  = hp[1] / max_range
-    r_tmax = hp[3] / max_range
+    r_half = ( hp[_HP_CURR] / 2 ) / max_range
+    r_curr = hp[_HP_CURR] / max_range
+    r_max  = hp[_HP_MAX] / max_range
+    r_tmax = hp[_HP_ORIGTEMP] / max_range
     
     # Angular positions
     a_half = _ASTART + ( _ATOTAL * r_half )

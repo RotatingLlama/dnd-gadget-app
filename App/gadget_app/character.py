@@ -1,7 +1,7 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 24 Mar 2026
+# 26 Mar 2026
 
 # Builtin libraries
 import os
@@ -934,7 +934,25 @@ class Character:
     
     self.save()
     self.draw_mtx_saves(show=show)
+  
+  # Come back from death
+  # full: HP to max?  or to 1
+  def undie(self, full:bool ):
     
+    # Do nothing if we're not dead
+    if self.data[_DEATH][_DEATH_STATUS] != _DEATH_STATUS_DD:
+      return
+    
+    # Restore at full HP?
+    if full:
+      hp = self.data[_HP][_HP_MAX]
+    else:
+      hp = 1
+    
+    # Do it
+    self.data[_HP][_HP_CURR] = hp
+    self.stabilise()
+  
   # Sets the max hit points
   # DOES validate
   def set_max_hp( self, val, show=True ):
@@ -1010,6 +1028,20 @@ class Character:
     self.save()
   '''
   
+  # Simple convenience function getters
+  def get_name(self) -> str:
+    return self.data[_NAME]
+  def get_title(self) -> str:
+    return self.data[_TITLE]
+  
+  # Does NOT validate
+  def set_xp(self, xp:int ):
+    self.data[_XP] = xp
+  
+  # Does NOT validate
+  def set_currency(self, c:int, val:int ):
+    self.data[_CURRENCY][c] = val
+  
   # Sets the needle to the current HP
   def show_curr_hp(self):
     hp = self.data[_HP]
@@ -1031,7 +1063,7 @@ class Character:
   # Optionally updates display
   def draw_mtx_stable(self, show=True):
     
-    stats = self.data
+    data = self.data
     fb = self.hal.mtx.bitmap
     
     # Given a line and a number, will light up that many lights from the right
@@ -1042,11 +1074,11 @@ class Character:
     self.hal.mtx.clear()
     
     # Go through all charges to update the matrix fb
-    for i,c in enumerate(stats[_CHARGES]):
+    for i,c in enumerate(data[_CHARGES]):
       draw_spell_charge( i, c[_CHARGES_CURR] )
     
     # Go through all spell slots to update the matrix fb
-    for i,s in enumerate(stats[_SPELLS][_SPELLS_CURR]):
+    for i,s in enumerate(data[_SPELLS][_SPELLS_CURR]):
       draw_spell_charge( 15-i, s )
     
     if show:

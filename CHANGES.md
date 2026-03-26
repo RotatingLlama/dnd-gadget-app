@@ -1,5 +1,9 @@
 TODO
 ====
+- _char_gfx.py:
+  - Make draw_play_screen() give drawThickArc() a scratch buffer
+  - Move draw_play_screen() into character.py proper
+  - Move the rest back into gfx.py
 * Combine 'charges' and other counters (gold, xp etc.)
   - 'max' property is optional
   - Assume zero minimum

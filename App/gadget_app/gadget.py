@@ -2,7 +2,7 @@
 # For Micropython v1.26
 #
 # T. Lloyd
-# 16 Mar 2026
+# 26 Mar 2026
 
 
 # TO USE:
@@ -158,7 +158,7 @@ class Gadget:
         continue
       
       # If we're here, we're good
-      print(f'Found: {c.stats['name']} ({c.stats['title']}) in /{x.name}/')
+      print(f'Found: {c.get_name()} ({c.get_title()}) in /{x.name}/')
       chars.append( c )
       
     return chars
@@ -222,7 +222,7 @@ class Gadget:
     
     # Set the character
     self.character = self._chars[i]
-    print( self.character.stats )
+    print( self.character.data )
     
     # Blank out chars object
     for j, c in enumerate(self._chars):

@@ -2,29 +2,63 @@
 # Consider as part of character.py
 #
 # T. Lloyd
-# 19 Mar 2026
+# 26 Mar 2026
 
 from micropython import const
 
-from .common import SD_ROOT, HAL_PRIORITY_MENU, HAL_PRIORITY_IDLE
+from .common import HAL_PRIORITY_MENU #, SD_ROOT, HAL_PRIORITY_IDLE
 from . import menu
 
 # Matrix adjust timeout, in ms
 _MTX_TIMEOUT = const(3000)
 
-# Constants
+# Indexes into the Character.data object
+#_NAME = const(0)
+#_TITLE = const(1)
+_XP = const(2)
+_CURRENCY = const(3)
+_HP = const(4)
+_HD = const(5)
+_SPELLS = const(6)
+_CHARGES = const(7)
+_DEATH = const(8)
+#
+_CURRENCY_COPPER = const(0)
+_CURRENCY_SILVER = const(1)
+_CURRENCY_ELECTRUM = const(2)
+_CURRENCY_GOLD = const(3)
+_CURRENCY_PLATINUM = const(4)
+#
+_HP_CURR = const(0)
+_HP_MAX = const(1)
+_HP_TEMP = const(2)
+#_HP_ORIGTEMP = const(3)
+#
+_HD_CURR = const(0)
+_HD_MAX = const(1)
+#
+_SPELLS_CURR = const(0)
+#_SPELLS_MAX = const(1)
+#
+_CHARGES_CURR = const(0)
+#_CHARGES_MAX = const(1)
+#_CHARGES_RESET = const(2)
+#_CHARGES_NAME = const(4)
+#
 _DEATH_STATUS = const(0)
 _DEATH_OK = const(1)
 _DEATH_NG = const(2)
-_DEATH_STAT_OK = const(0)
-_DEATH_STAT_SV = const(1)
-_DEATH_STAT_DD = const(2)
+#
+_DEATH_STATUS_OK = const(0)
+_DEATH_STATUS_SV = const(1)
+_DEATH_STATUS_DD = const(2)
+
 
 def make_matrix_menu_stable( hal, char ) -> menu.MatrixMenu:
   
   # Calculate matrix geometry
-  n_spls = len(char.stats['spells']) # Allow as many spells as we have
-  n_chgs = min( 16-n_spls, len(char.stats['charges']) ) # Cut off charges if there are too many to fit
+  n_spls = len(char.data[_SPELLS][_SPELLS_CURR]) # Allow as many spells as we have
+  n_chgs = min( 16-n_spls, len(char.data[_CHARGES]) ) # Cut off charges if there are too many to fit
   n_rows = n_chgs + n_spls # Number of active rows
   gap = 16 - n_rows
   
@@ -43,13 +77,13 @@ def make_matrix_menu_stable( hal, char ) -> menu.MatrixMenu:
     if row < n_chgs: # Charges
       char.set_charge(
         row,
-        n + char.stats['charges'][row]['curr'],
+        n + char.data[_CHARGES][row][_CHARGES_CURR],
         show=True
       )
     else: # Spells
       char.set_spell(
         15 - row,
-        n + char.stats['spells'][15-row][0],
+        n + char.data[_SPELLS][_SPELLS_CURR][15-row],
         show=True
       )
   
@@ -77,7 +111,7 @@ def make_matrix_menu_saves( hal, char ) -> menu.MatrixMenu:
     
     char.set_deathsaves(
       success = (not row), # Transform row number into success boolean
-      val = n + char.stats['death'][ ( _DEATH_OK, _DEATH_NG )[row] ],
+      val = n + char.data[_DEATH][ ( _DEATH_OK, _DEATH_NG )[row] ],
       show = True
     )
   
@@ -98,7 +132,7 @@ def make_matrix_menu_saves( hal, char ) -> menu.MatrixMenu:
 def make_oled_menu( hal, char, parent ) -> menu.ScrollingOledMenu:
   
   # Localise
-  death = char.stats['death']
+  death = char.data[_DEATH]
   
   # Root Oled menu
   om = menu.ScrollingOledMenu(
@@ -110,10 +144,10 @@ def make_oled_menu( hal, char, parent ) -> menu.ScrollingOledMenu:
   omi = om.items
   
   # Health submenu
-  if death[_DEATH_STATUS] == _DEATH_STAT_OK:
+  if death[_DEATH_STATUS] == _DEATH_STATUS_OK:
     # Use the normal damage/heal/temphp submenu
     omi.append( _submenu_health_stable( hal, char, om ) )
-  elif death[_DEATH_STATUS] == _DEATH_STAT_SV:
+  elif death[_DEATH_STATUS] == _DEATH_STATUS_SV:
     if death[_DEATH_NG] < 3:
       # Use the reduced stabilise/heal submenu
       omi.append( _submenu_health_deathsaves( hal, char, om ) )
@@ -127,7 +161,7 @@ def make_oled_menu( hal, char, parent ) -> menu.ScrollingOledMenu:
           con_func=char.die
         )
       )
-  elif death[_DEATH_STATUS] == _DEATH_STAT_DD:
+  elif death[_DEATH_STATUS] == _DEATH_STATUS_DD:
     # Resurrection menu
     omi.append( _submenu_resurrection( hal, char, om ) )
   
@@ -135,7 +169,7 @@ def make_oled_menu( hal, char, parent ) -> menu.ScrollingOledMenu:
   omi.append( _submenu_money( hal, char, om ) )
   
   # Rest/reset submenu - only appplies when stable
-  if death[_DEATH_STATUS] == _DEATH_STAT_OK:
+  if death[_DEATH_STATUS] == _DEATH_STATUS_OK:
     omi.append( _submenu_rest_reset( hal, char, om ) )
   
   # XP is its own thing - always available
@@ -143,8 +177,8 @@ def make_oled_menu( hal, char, parent ) -> menu.ScrollingOledMenu:
     menu.SimpleAdjuster( om, hal,
       prio=HAL_PRIORITY_MENU+2,
       title='XP',
-      get_cur=lambda: char.stats['xp'],
-      set_abs=lambda x : char.set_numeric_item( 'xp', x )
+      get_cur=lambda: char.data[_XP],
+      set_abs=char.set_xp
     )
   )
   
@@ -155,13 +189,13 @@ def _menuitem_heal( hal, char, parent ) -> menu.SimpleAdjuster:
   return menu.SimpleAdjuster( parent, hal,
     prio=HAL_PRIORITY_MENU+3,
     title='Heal',
-    get_cur=lambda: char.stats['hp'][0],
+    get_cur=lambda: char.data[_HP][_HP_CURR],
     set_rel=char.heal,
-    adj_rel = lambda d : char.show_hp( char.stats['hp'][0] + char.stats['hp'][2] + d ),
+    adj_rel = lambda d : char.show_hp( char.data[_HP][_HP_CURR] + char.data[_HP][_HP_TEMP] + d ),
     min_d=0,
     max_d=None,
     min=0,
-    max=char.stats['hp'][1]
+    max=char.data[_HP][_HP_MAX]
   )
 
 # Normal health menu.  Damage, Heal, Temp HP
@@ -180,11 +214,11 @@ def _submenu_health_stable( hal, char, parent ) -> menu.SubMenu:
       prio=HAL_PRIORITY_MENU+3,
       title='Damage',
       preview=lambda d: char.damage_calc(-d),
-      get_cur=lambda: ( char.stats['hp'][0], char.stats['hp'][2] ),
+      get_cur=lambda: ( char.data[_HP][_HP_CURR], char.data[_HP][_HP_TEMP] ),
       set_new=lambda d: char.damage(-d),
       a='     HP',
       b='Temp HP',
-      adj_rel = lambda d : char.show_hp( char.stats['hp'][0] + char.stats['hp'][2] + d ),
+      adj_rel = lambda d : char.show_hp( char.data[_HP][_HP_CURR] + char.data[_HP][_HP_TEMP] + d ),
       min_d=None,
       max_d=lambda: 0,
     )
@@ -240,25 +274,12 @@ def _submenu_resurrection( hal, char, parent ) -> menu.SubMenu:
   smm = submenu.menu
   smi = smm.items
   
-  # Restore
-  def r(full:bool):
-    
-    # Restore at full HP?
-    if full:
-      hp = char.stats['hp'][1]
-    else:
-      hp = 1
-    
-    # Do it
-    char.stats['hp'][0] = hp
-    char.stabilise()
-    
   smi.append(
    menu.FunctionConfirmer( smm, hal,
       prio=HAL_PRIORITY_MENU+3,
       title='Restore 1 HP',
       confirmation='Restore 1 HP?',
-      con_func=lambda : r(False)
+      con_func=lambda : char.undie(False)
     )
   )
   smi.append(
@@ -266,7 +287,7 @@ def _submenu_resurrection( hal, char, parent ) -> menu.SubMenu:
       prio=HAL_PRIORITY_MENU+3,
       title='Restore Full HP',
       confirmation='Restore full HP?',
-      con_func=lambda : r(True)
+      con_func=lambda : char.undie(True)
     )
   )
   
@@ -286,40 +307,40 @@ def _submenu_money( hal, char, parent ) -> menu.SubMenu:
     menu.SimpleAdjuster( smm, hal,
       prio=HAL_PRIORITY_MENU+3,
       title='Gold',
-      get_cur=lambda: char.stats['gold'],
-      set_abs=lambda x : char.set_numeric_item( 'gold', x )
+      get_cur=lambda: char.data[_CURRENCY][_CURRENCY_GOLD],
+      set_abs=lambda x : char.set_currency( _CURRENCY_GOLD, x )
     )
   )
   smi.append(
     menu.SimpleAdjuster( smm, hal,
       prio=HAL_PRIORITY_MENU+3,
       title='Silver',
-      get_cur=lambda: char.stats['silver'],
-      set_abs=lambda x : char.set_numeric_item( 'silver', x )
+      get_cur=lambda: char.data[_CURRENCY][_CURRENCY_SILVER],
+      set_abs=lambda x : char.set_currency( _CURRENCY_SILVER, x )
     )
   )
   smi.append(
     menu.SimpleAdjuster( smm, hal,
       prio=HAL_PRIORITY_MENU+3,
       title='Copper',
-      get_cur=lambda: char.stats['copper'],
-      set_abs=lambda x : char.set_numeric_item( 'copper', x )
+      get_cur=lambda: char.data[_CURRENCY][_CURRENCY_COPPER],
+      set_abs=lambda x : char.set_currency( _CURRENCY_COPPER, x )
     )
   )
   smi.append(
     menu.SimpleAdjuster( smm, hal,
       prio=HAL_PRIORITY_MENU+3,
       title='Platinum',
-      get_cur=lambda: char.stats['platinum'],
-      set_abs=lambda x : char.set_numeric_item( 'platinum', x )
+      get_cur=lambda: char.data[_CURRENCY][_CURRENCY_PLATINUM],
+      set_abs=lambda x : char.set_currency( _CURRENCY_PLATINUM, x )
     )
   )
   smi.append(
     menu.SimpleAdjuster( smm, hal,
       prio=HAL_PRIORITY_MENU+3,
       title='Electrum',
-      get_cur=lambda: char.stats['electrum'],
-      set_abs=lambda x : char.set_numeric_item( 'electrum', x )
+      get_cur=lambda: char.data[_CURRENCY][_CURRENCY_ELECTRUM],
+      set_abs=lambda x : char.set_currency( _CURRENCY_ELECTRUM, x )
     )
   )
   
@@ -349,7 +370,7 @@ def _submenu_rest_reset( hal, char, parent ) -> menu.SubMenu:
       title='Short Rest',
       #       x x x x x x x x
       prompt='Use hit dice?',
-      get_cur=lambda: char.stats['hd'][0],
+      get_cur=lambda: char.data[_HD][_HD_CURR],
       set_rel=lambda dice: char.short_rest(-dice),
       min=0,
       max_d=0,
@@ -369,10 +390,10 @@ def _submenu_rest_reset( hal, char, parent ) -> menu.SubMenu:
     menu.SimpleAdjuster( smm, hal,
       prio=HAL_PRIORITY_MENU+3,
       title='Hit Dice',
-      get_cur=lambda: char.stats['hd'][0],
+      get_cur=lambda: char.data[_HD][_HD_CURR],
       set_abs=char.set_hit_dice,
       min=0,
-      max=char.stats['hd'][1],
+      max=char.data[_HD][_HD_MAX],
       allow_zero=True,
     )
   )

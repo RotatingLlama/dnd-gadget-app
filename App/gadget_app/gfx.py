@@ -1,7 +1,7 @@
 # Drawing functions
 #
 # T. Lloyd
-# 23 Mar 2026
+# 26 Mar 2026
 
 # Standard libraries
 import micropython
@@ -230,7 +230,7 @@ def draw_char_select( fb, chars ):
     
     # If no head (that we can use)
     if not headok:
-      txt = char.stats['name'][:max_name_len]
+      txt = char.get_name()[:max_name_len]
       x = round( _X + _ARC2_RI*sin(a) - (len(txt)*4) )
       y = round( _Y - _ARC2_RI*cos(a) -4 )
       fb.rect(x-2, y-2, len(txt)*8 +4, 12, 2, False )
