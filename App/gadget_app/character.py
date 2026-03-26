@@ -1,7 +1,7 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 23 Mar 2026
+# 24 Mar 2026
 
 # Builtin libraries
 import os
@@ -19,17 +19,62 @@ from . import _char_menus as _cm
 from . import _char_gfx as gfx
 from .common import DeferredTask, CHAR_STATS, INTERNAL_SAVEDIR, HAL_PRIORITY_MENU, HAL_PRIORITY_IDLE
 
-# When loading from file, load no more than this many of each item
-_MAX_SPELLS = const(9)
-_MAX_CHARGES = const(16)
-_CHG_NAME_MAXLEN = const(45) # 360/8
-
 _SAVE_TIMEOUT = const(30000) # Save contdown, in ms
 
-# Constants
+# Global maximums
+_MAX_NAMELEN = const(16)
+_MAX_TITLELEN = const(16)
+_MAX_XP = const(0xffffffff)
+_MAX_CURRENCY = const(0xffff)
+_MAX_HITDICE = const(255) # Max possible number of hit dice
+_MAX_HP = const(0xffff)
+_MAX_SPELL_LEVELS = const(9)
+_MAX_SPELLSLOTS = const(6) # Max number of spell slots at each level
+_MAX_CHARGE_ITEMS = const(16) # When loading from file, load no more than this many of each item
+_MAX_CHARGENAME_LEN = const(45) # 360/8
+
+# Indexes into the Character.data object
+_NAME = const(0)
+_TITLE = const(1)
+_XP = const(2)
+_CURRENCY = const(3)
+_HP = const(4)
+_HD = const(5)
+_SPELLS = const(6)
+_CHARGES = const(7)
+_DEATH = const(8)
+#
+_CURRENCY_COPPER = const(0)
+_CURRENCY_SILVER = const(1)
+_CURRENCY_ELECTRUM = const(2)
+_CURRENCY_GOLD = const(3)
+_CURRENCY_PLATINUM = const(4)
+#
+_HP_CURR = const(0)
+_HP_MAX = const(1)
+_HP_TEMP = const(2)
+_HP_ORIGTEMP = const(3)
+#
+_HD_CURR = const(0)
+_HD_MAX = const(1)
+#
+_SPELLS_CURR = const(0)
+_SPELLS_MAX = const(1)
+#
+_CHARGES_CURR = const(0)
+_CHARGES_MAX = const(1)
+_CHARGES_RESET = const(2)
+_CHARGES_NAME = const(4)
+#
 _DEATH_STATUS = const(0)
 _DEATH_OK = const(1)
 _DEATH_NG = const(2)
+
+# Codes for Character.data objects
+_CHARGE_RESET_SR = const(0x01)
+_CHARGE_RESET_LR = const(0x02)
+_CHARGE_RESET_DAWN = const(0x04)
+#
 _DEATH_STATUS_OK = const(0)
 _DEATH_STATUS_SV = const(1)
 _DEATH_STATUS_DD = const(2)
@@ -56,7 +101,7 @@ def try_sync() -> bool:
     ok = ok and r
   
   return ok
-
+"""
 # Check a string: correct type and has length
 def val_str(s,t):
   if type(s) is not str:
@@ -77,7 +122,7 @@ def val_zpint(v,t):
     return t+' must be integer'
   if v < 0:
     return t+' must be >= 0'
-
+"""
 # Individual params.  HP, Spells and Charges are treated differently.
 # load() will check:
 # 1. Does the parameter name in the file match an entry here?
@@ -88,6 +133,7 @@ def val_zpint(v,t):
 # Complex parameters (HP, spells/charges, hit dice) are dealt with separately.
 # If default value is None, param is mandatory
 # [ value, validation function, conversion function, default value ]
+'''
 PARAMS = {
   'name'    : [None, lambda s: val_str(s,'name'),      lambda x:x, None],
   'title'   : [None, lambda s: val_zstr(s,'title'),    lambda x:x, ''],
@@ -98,6 +144,22 @@ PARAMS = {
   'electrum': [None, lambda v: val_zpint(v,'Electrum'),int,        0],
   'platinum': [None, lambda v: val_zpint(v,'Platinum'),int,        0],
 }
+'''
+
+# Save helper function
+# Converts charge's reset bitarray to a string tuple
+def _rst_to_list(bf:int) -> list:
+  # Strings appear in savefiles.
+  # Order corresponds to _CHARGE_RESET_SR, _CHARGE_RESET_LR etc.
+  a = ( 'sr', 'lr', 'dawn' )
+  b = []
+  i = 0
+  while i < len(a):
+    if bf & 1:
+      b.append( a[i] )
+    bf = bf >> 1
+    i += 1
+  return b
 
 # hal: The HAL object from hal.py
 # sd_mounted: A callable which will return a boolean indicating whether the SD card is ready for read/write
@@ -127,7 +189,7 @@ class Character:
     # Stats
     # This will get populated during load() with all the simple PARAMS (above) so they don't need to be defined here
     # But hp/hd/spell/cherge/death structures need to pre-exist
-    self.stats = {}
+    #self.stats = {}
     
     # Whenever anything updates self.stats, it also calls self.save()
     # self.save() calls self._saver.touch() and sets self._dirty
@@ -171,7 +233,7 @@ class Character:
     
     del uts, ts, f, fd
     gc_collect()
-    
+    '''
     # Step through the expected simple parameters
     for k in PARAMS:
       
@@ -193,6 +255,46 @@ class Character:
       
       # Convert and temporarily store the value
       p[0] = p[2]( v )
+    '''
+    
+    # Name
+    try:
+      name = str( fs.get('name') )[:_MAX_NAMELEN]
+    except ( ValueError, TypeError ) as e:
+      raise CharacterError('Invalid name')
+    if len(name) == 0:
+      raise CharacterError('No name given')
+    
+    # Title
+    try:
+      title = str( fs.get('title') )[:_MAX_TITLELEN]
+    except ( ValueError, TypeError ) as e:
+      raise CharacterError('Invalid title')
+    
+    # XP
+    try:
+      xp = int( fs.get('xp',0) )
+    except ( ValueError, TypeError ) as e:
+      raise CharacterError('Invalid XP')
+    if not 0 <= xp <= _MAX_XP:
+      raise CharacterError('Invalid XP')
+    
+    # Get and validate currency
+    #gpf = 
+    try:
+      gp = (
+        int( fs.get('copper',0) )
+        int( fs.get('silver',0) )
+        int( fs.get('electrum',0) )
+        int( fs.get('gold',0) )
+        int( fs.get('platinum',0) )
+      )
+    except ( ValueError, TypeError ) as e:
+      raise CharacterError('Invalid currency')
+    if not all([ 0 <= x <= _MAX_CURRENCY for x in gp ]):
+      raise CharacterError('Invalid currency value')
+    currency = array( 'H', gp )# Unsigned short (2 bytes)
+    del gp
     
     # Get and validate hit dice
     hdf = fs.get('hitdice')
@@ -201,16 +303,14 @@ class Character:
     if type(hdf) is not dict:
       raise CharacterError('Invalid hitdice')
     try:
-      hd = [
-        int( hdf.get('current') ),
-        int( hdf.get('max') ),
-      ]
+      mx = int( hdf.get('max') )
+      cur = int( hdf.get('current',mx) )
     except ( ValueError, TypeError ) as e:
       raise CharacterError('Invalid hitdice')
-    if hd[1] <= 0:
-      raise CharacterError('Invalid max hitdice')
-    if not ( 0 <= hd[0] <= hd[1] ):
+    if not 0 <= cur <= mx <= _MAX_HITDICE:
       raise CharacterError('Invalid hitdice')
+    hd = bytearray(( cur, mx ))
+    del hdf
     
     # Get and validate HP
     hpf = fs.get( 'hp' )
@@ -219,69 +319,94 @@ class Character:
     if type(hpf) is not dict:
       raise CharacterError('Invalid hp')
     try:
-      hp = [
-        int( hpf.get('current') ),
-        int( hpf.get('max') ),
-        int( hpf.get('temporary') ),
-        int( hpf.get('temporary') ),
-      ]
+      mx = int( hpf.get('max') )
+      cur = int( hpf.get('current',mx) )
+      temp = int( hpf.get('temporary',0) )
     except ( ValueError, TypeError ) as e:
       raise CharacterError('Invalid hp')
-    if hp[1] <= 0:
-      raise CharacterError('Invalid max hp')
-    if not ( 0 <= hp[0] <= hp[1] ):
-      raise CharacterError('Invalid current hp')
-    if hp[2] < 0:
+    if not 0 <= cur <= mx <= _MAX_HP:
+      raise CharacterError('Invalid hp')
+    if not 0 <= temp <= _MAX_HP:
       raise CharacterError('Invalid temporary hp')
+    hp = array('H', ( # Unsigned short (2 bytes)
+      cur,
+      mx,
+      temp,
+      temp,
+    ))
+    del hpf
     
     # Get and validate spells
     spf = fs.get( 'spells', [] )
     if type(spf) is not list:
       raise CharacterError('Invalid spell slots list')
-    sp = [None] * min( _MAX_SPELLS, len(spf) )
-    for i, s in enumerate( spf[:_MAX_SPELLS] ):
-      if type(s) is not dict:
+    num_spells = min( _MAX_SPELL_LEVELS, len(spf) )
+    sp_curr = bytearray(num_spells)
+    sp_max = bytearray(num_spells)
+    #sp = [None] * min( _MAX_SPELL_LEVELS, len(spf) )
+    #for i, s in enumerate( spf[:_MAX_SPELL_LEVELS] ):
+    for i in range(num_spells):
+      if type(spf[i]) is not dict:
         raise CharacterError( f'Bad spell slot #{i+1}' )
       try:
-        sp[i] = [ int( s.get('current',-1) ), int( s.get('max') ) ]
+        mx = int( spf[i].get('max') )
+        cur = int( spf[i].get( 'current', mx ) ) # Default to full if not specified
+        #sp[i] = [ int( s.get('current',-1) ), int( s.get('max') ) ]
       except ( ValueError, TypeError ) as e:
         raise CharacterError( f'Bad spell slot #{i+1}' )
-      if sp[i][1] <= 0: # max
+      if not 0 <= mx <= _MAX_SPELLSLOTS:
         raise CharacterError( f'Bad spell slot #{i+1}' )
-      if sp[i][0] == -1: # Wasn't specified
-        sp[i][0] = sp[i][1] # Start at full (max)
-      if not ( 0 <= sp[i][0] <= sp[i][1] ):
+      #if sp[i][0] == -1: # Wasn't specified
+      #  sp[i][0] = sp[i][1] # Start at full (max)
+      #if not ( 0 <= sp[i][0] <= sp[i][1] ):
+      if not ( 0 <= cur <= mx ):
         raise CharacterError( f'Bad spell slot #{i+1}' )
+      sp_curr[i] = cur
+      sp_max[i] = mx
+    del spf
     
     # Get and validate charges
     chf = fs.get( 'charges', [] )
     if type(chf) is not list:
       raise CharacterError( 'Invalid charges list' )
-    ch = [None] * min( _MAX_CHARGES, len(chf) )
-    for i, c in enumerate( chf[:_MAX_CHARGES] ):
+    ch = [None] * min( _MAX_CHARGE_ITEMS, len(chf) )
+    for i, c in enumerate( chf[:_MAX_CHARGE_ITEMS] ):
       if type(c) is not dict:
         raise CharacterError( f'Bad charge #{i+1}' )
       try:
-        ch[i] = {
-          'name' : str( c.get('name') )[:_CHG_NAME_MAXLEN],
-          'curr' : int( c.get('current',-1) ),
-          'max'  : int( c.get('max') ),
-          'reset' : [],
-        }
-      except ( ValueError, TypeError ) as e:
+        nm = str( c.get('name') )[:_MAX_CHARGENAME_LEN]
+        mx = int( c.get('max',0) )
+        cur = int( c.get('current',mx) )
+      except ( ValueError, TypeError ) as e: # Invalid datatype
         raise CharacterError( f'Bad charge #{i+1}' )
-      if ch[i]['max'] <= 0:
+      if mx and not cur <= mx: # Current is not less than max (if max is set)
         raise CharacterError( f'Bad charge #{i+1}' )
-      if ch[i]['curr'] == -1: # Wasn't specified
-        ch[i]['curr'] = ch[i]['max'] # Start at full (max)
-      if not ( 0 <= ch[i]['curr'] <= ch[i]['max'] ):
+      if not 0 <= cur: # Current is less than zero
         raise CharacterError( f'Bad charge #{i+1}' )
-      rst = c.get( 'reset', [] )
+      #if ch[i]['curr'] == -1: # Wasn't specified
+      #  ch[i]['curr'] = ch[i]['max'] # Start at full (max)
+      #if not ( 0 <= ch[i]['curr'] <= ch[i]['max'] ):
+      #  raise CharacterError( f'Bad charge #{i+1}' )
+      rstf = c.get( 'reset', [] )
       if type(rst) is not list:
         raise CharacterError( f'Charge #{i+1} has invalid reset' )
-      for r in rst:
-        if r in ( 'lr', 'sr', 'dawn' ):
-          ch[i]['reset'].append( r )
+      r = {
+        'sr' : _CHARGE_RESET_SR,
+        'lr' : _CHARGE_RESET_LR,
+        'dawn' : _CHARGE_RESET_DAWN,
+      }
+      rst = sum([ r.get( x, 0 ) for x in rstf ])
+      
+      #for r in rst:
+      #  if r in ( 'lr', 'sr', 'dawn' ):
+      #    ch[i]['reset'].append( r )
+      ch[i] = [
+        cur,
+        mx,
+        rst,
+        nm
+      ]
+    del chf, r, rstf
     
     # Get and validate death
     df = fs.get( 'death', {} )
@@ -300,16 +425,30 @@ class Character:
       raise CharacterError( 'Invalid number of successful death saves' )
     if not 0<= d[ _DEATH_NG ] <= 3:
       raise CharacterError( 'Invalid number of failed death saves' )
+    del df, di
     
     # Assemble
+    self.data = [
+      name,
+      title,
+      xp,
+      currency,
+      hp,
+      hd,
+      ( sp_curr, sp_max ),
+      ch,
+      d,
+    ]
+    '''
     self.stats = { k: PARAMS[k][0] for k in PARAMS }
     self.stats.update({
       'hd' : hd,
       'hp' : hp,
-      'spells' : sp,
+      'spells' : 
       'charges' : ch,
       'death' : d,
     })
+    '''
   
   # Constructs the play screen and menus
   def activate(self):
@@ -353,7 +492,8 @@ class Character:
     
     # Localise
     hal = self.hal
-    ds = self.stats['death'][_DEATH_STATUS]
+    #ds = self.stats['death'][_DEATH_STATUS]
+    ds = self.data[_DEATH][_DEATH_STATUS]
     
     # Eink and needle
     if show:
@@ -427,27 +567,31 @@ class Character:
   # Blindly overwrites f with the save data
   # Return bool indicating success/failure
   def _save_file(self, f ) -> bool:
-    s = self.stats
-    sf = { k: s[k] for k in PARAMS }
-    sf.update({
-      'hitdice' : dict(zip( ('current','max'), s['hd'] )),
-      'hp'      : dict(zip( ( 'current', 'max', 'temporary' ), s['hp'][:3] )),
-      'spells'  : [ dict(zip( ('current','max'), sp )) for sp in s['spells'] ],
+    s = self.data
+    sf = {
+      'name'    : s[_NAME],
+      'title'   : s[_TITLE],
+      'xp'      : s[_XP],
+      'copper'  : s[_CURRENCY][_CURRENCY_COPPER],
+      'silver'  : s[_CURRENCY][_CURRENCY_SILVER],
+      'electrum': s[_CURRENCY][_CURRENCY_ELECTRUM],
+      'gold'    : s[_CURRENCY][_CURRENCY_GOLD],
+      'platinum': s[_CURRENCY][_CURRENCY_PLATINUM],
+      'hp'      : dict(zip( ( 'current', 'max', 'temporary' ), s[_HP][:3] )),
+      'hitdice' : dict(zip( ('current','max'), s[_HD] )),
+      'spells'  : list(zip( s[_SPELLS][_SPELLS_CURR], s[_SPELLS][_SPELLS_MAX] )), #[ dict(zip( ('current','max'), sp )) for sp in s[_SPELLS] ],
       'charges' : [ {
-        'name'    : c['name'],
-        'current' : c['curr'],
-        'max'     : c['max'],
-        'reset'   : c['reset']
-        } for c in s['charges'] ],
-      'death' : dict(zip(
-        ('status','successes','failures'),
-        [
-          _DEATH_STATUS_TUPLE[ s['death'][_DEATH_STATUS] ],
-          s['death'][_DEATH_OK],
-          s['death'][_DEATH_NG],
-        ]
-      )),
-    })
+        'name'    : c[_CHARGES_NAME],
+        'current' : c[_CHARGES_CURR],
+        'max'     : c[_CHARGES_MAX],
+        'reset'   : _rst_to_list( c[_CHARGES_RESET] ),
+        } for c in s[_CHARGES] ],
+      'death' : {
+        'status'    : _DEATH_STATUS_TUPLE[ s[_DEATH][_DEATH_STATUS] ],
+        'successes' :s[_DEATH][_DEATH_OK],
+        'failures'  :s[_DEATH][_DEATH_NG],
+      },
+    }
     
     try:
       with open( f, 'w') as fd:
@@ -503,18 +647,24 @@ class Character:
   def short_rest(self, hit_dice=0, show=True):
     
     # Localise
-    st = self.stats
+    st = self.data
     
     # Apply hit dice reduction.
     # Silently clamp overspend
-    st['hd'][0] = max( st['hd'][0] - hit_dice, 0 )
+    st[_HD][_HD_CURR] = max( st[_HD][_HD_CURR] - hit_dice, 0 )
     
     # Option to do spell slots here?
     
     # Reset all short-rest charges to max
-    for c in st['charges']:
-      if 'sr' in c['reset']:
-        c['curr'] = c['max']
+    for c in st[_CHARGES]:
+      
+      # Zero-max means no maximum.  Don't reset.
+      if c[_CHARGES_MAX] == 0:
+        continue
+      
+      # If it resets on a short rest, reset it
+      if c[_CHARGES_RESET] & _CHARGE_RESET_SR:
+        c[_CHARGES_CURR] = c[_CHARGES_MAX]
     
     self.save()
     
@@ -527,32 +677,32 @@ class Character:
     # Regain up to half total number of hit dice
     
     # Localise
-    st = self.stats
-    h = st['hp']
-    sps = st['spells']
-    cgs = st['charges']
+    st = self.data
+    h = st[_HP]
+    sps = st[_SPELLS]
+    cgs = st[_CHARGES]
     
     # Will we need to update the eink after this?
-    e:bool = ( h[2] != 0 ) # If we had temp hp, they're being reset and we need to update
+    e:bool = ( h[_HP_TEMP] != 0 ) # If we had temp hp, they're being reset and we need to update
     
     # Reset HP
-    h[0] = h[1] # Reset current to max
-    h[2] = 0    # Reset temp to zero
-    h[3] = 0    # Reset max temp to zero
+    h[_HP_CURR] = h[_HP_MAX] # Reset current to max
+    h[_HP_TEMP] = 0          # Reset temp to zero
+    h[_HP_ORIGTEMP] = 0      # Reset max temp to zero
     
     # Reset hit dice
-    hd_rst:int = max( st['hd'][1] // 2, 1 ) # Half, rounding down.  Minimum of 1
-    st['hd'][0] = min( st['hd'][0] + hd_rst, st['hd'][1] )
+    hd_rst:int = max( st[_HD][_HD_MAX] // 2, 1 ) # Half, rounding down.  Minimum of 1
+    st[_HD][_HD_CURR] = min( st[_HD][_HD_CURR] + hd_rst, st[_HD][_HD_MAX] )
     del hd_rst
     
     # Reset spell slots
     for s in sps:
-      s[0] = s[1]
+      s[_SPELLS_CURR] = s[_SPELLS_MAX]
     
     # Reset all long-rest charges to max
     for c in cgs:
-      if 'lr' in c['reset']:
-        c['curr'] = c['max']
+      if c[_CHARGES_MAX] and c[_CHARGES_RESET] & _CHARGE_RESET_LR:
+        c[_CHARGES_CURR] = c[_CHARGES_MAX]
     
     self.save()
     
@@ -566,9 +716,9 @@ class Character:
   
   def dawn_reset(self, show=True):
     
-    for c in self.stats['charges']:
-      if 'dawn' in c['reset']:
-        c['curr'] = c['max']
+    for c in self.data[_CHARGES]:
+      if c[_CHARGES_MAX] and c[_CHARGES_RESET] & _CHARGE_RESET_DAWN:
+        c[_CHARGES_CURR] = c[_CHARGES_MAX]
     
     self.save()
     
@@ -579,8 +729,8 @@ class Character:
   def heal( self, amt, show=True ):
     
     # Localise
-    hp = self.stats['hp']
-    death = self.stats['death']
+    hp = self.data[_HP]
+    death = self.data[_DEATH]
     
     assert type(amt) is int
     assert amt >= 0
@@ -594,11 +744,11 @@ class Character:
       return
     
     # Add the HP
-    hp[0] += amt
+    hp[_HP_CURR] += amt
     
     # Can't heal past max
-    if hp[0] > hp[1]:
-      hp[0] = hp[1]
+    if hp[_HP_CURR] > hp[_HP_MAX]:
+      hp[_HP_CURR] = hp[_HP_MAX]
     
     # If we were in death saves, stabilise
     if death[_DEATH_STATUS] == _DEATH_STATUS_SV:
@@ -617,8 +767,8 @@ class Character:
   def damage_calc( self, amt ):
     
     # Get the current levels
-    new_hp = self.stats['hp'][0]
-    new_temp = self.stats['hp'][2]
+    new_hp = self.data[_HP][_HP_CURR]
+    new_temp = self.data[_HP][_HP_TEMP]
     
     # First reduce the temp HP
     new_temp -= amt
@@ -634,46 +784,46 @@ class Character:
   def damage( self, amt, show=True ):
     
     # Current, max, temp, orig_temp
-    hp = self.stats['hp']
+    hp = self.data[_HP]
     
     assert type(amt) is int
     assert amt >= 0
     
     # If we're in death saves, or dead - don't accept damage.
     # Expect user to apply extra failures manually.
-    if self.stats['death'][_DEATH_STATUS] != _DEATH_STATUS_OK:
+    if self.data[_DEATH][_DEATH_STATUS] != _DEATH_STATUS_OK:
       return
     
     # Affects whether we need to update eink
-    tmp_cache = hp[2]
+    tmp_cache = hp[_HP_TEMP]
     
     # Update HP and Temp HP
-    hp[0], hp[2] = self.damage_calc( amt )
+    hp[_HP_CURR], hp[_HP_TEMP] = self.damage_calc( amt )
     
     # If Temp HP is zero, set max temp hp to zero too
-    if hp[2] == 0:
-      hp[3] = 0
+    if hp[_HP_TEMP] == 0:
+      hp[_HP_ORIGTEMP] = 0
     
     # Extract any overdamage, clamp HP to zero
     od = 0
-    if hp[0] < 0:
-      od = -hp[0]
-      hp[0] = 0
+    if hp[_HP_CURR] < 0:
+      od = -hp[_HP_CURR]
+      hp[_HP_CURR] = 0
     
     # Is the overdamage >= max HP?
-    if od >= hp[1]:
+    if od >= hp[_HP_MAX]:
       self.die()
       return
     
     # Do we need to enter death saves?
-    if hp[0] == 0:
+    if hp[_HP_CURR] == 0:
       self.deathsaves()
       return
     
     self.save()
     
     # Only way damage can cause eink redraw is by dropping temp hp to zero
-    if tmp_cache > 0 and hp[2] == 0:
+    if tmp_cache > 0 and hp[_HP_TEMP] == 0:
       self.draw_eink( show=show )
     
     if show:
@@ -688,17 +838,17 @@ class Character:
     assert val >= 0
     
     # Prevent accidental fires from triggering e-ink refresh
-    if self.stats['hp'][2] == 0 and val == 0:
+    if self.data[_HP][_HP_TEMP] == 0 and val == 0:
       return
     
     # eink update needed?
     e = False
     
-    self.stats['hp'][2] = val # Current temp
+    self.data[_HP][_HP_TEMP] = val # Current temp
     
     # Are we setting a different level from current?
-    if val != self.stats['hp'][3]:
-      self.stats['hp'][3] = val # Update max temp
+    if val != self.data[_HP][_HP_ORIGTEMP]:
+      self.data[_HP][_HP_ORIGTEMP] = val # Update max temp
       e = True # eink update required
     
     self.save()
@@ -717,7 +867,7 @@ class Character:
       raise ValueError('Invalid status')
     
     # Localise
-    d = self.stats['death']
+    d = self.data[_DEATH]
     
     # Are we already in this status?
     if d[_DEATH_STATUS] == status:
@@ -747,7 +897,7 @@ class Character:
   def set_deathsaves(self, success:bool, val:int, show=True ):
     
     # Localise
-    d = self.stats['death']
+    d = self.data[_DEATH]
     
     # Sanity
     if d[_DEATH_STATUS] != _DEATH_STATUS_SV:
@@ -793,11 +943,11 @@ class Character:
     assert val >= 1
     
     # Set the max
-    self.stats['hp'][1] = val
+    self.data[_HP][_HP_MAX] = val
     
     # Clamp current to new max
-    if self.stats['hp'][0] > val:
-      self.stats['hp'][0] = val
+    if self.data[_HP][_HP_CURR] > val:
+      self.data[_HP][_HP_CURR] = val
     
     self.save()
     
@@ -813,10 +963,10 @@ class Character:
     assert type(val) is int
     
     # Is the new number valid?
-    if not 0 <= val <= self.stats['hd'][1]:
+    if not 0 <= val <= self.data[_HD][_HD_MAX]:
       return
     
-    self.stats['hd'][0] = val
+    self.data[_HD][_HD_CURR] = val
     
     self.save()
   
@@ -826,13 +976,13 @@ class Character:
   def set_spell( self, spl, val, show=True ):
     
     # Get the spell object
-    s = self.stats['spells'][spl]
+    s = self.data[_SPELLS]
     
     # Is the new number valid?
-    if not 0 <= val <= s[1]:
+    if not 0 <= val <= s[_SPELLS_MAX][spl]:
       return
     
-    s[0] = val
+    s[_SPELLS_CURR][spl] = val
     self.save()
     self.draw_mtx_stable(show=show)
   
@@ -842,31 +992,33 @@ class Character:
   def set_charge( self, chg, val, show=True ):
     
     # Get the charge object
-    c = self.stats['charges'][chg]
+    c = self.data[_CHARGES][chg]
     
     # Is the new number valid?
-    if not 0 <= val <= c['max']:
+    if c[_CHARGES_MAX] and not 0 <= val <= c[_CHARGES_MAX]:
       return
     
-    c['curr'] = val
+    c[_CHARGES_CURR] = val
     self.save()
     self.draw_mtx_stable(show=show)
   
   # Helper function for these numeric-only things
   # Does NOT validate
+  '''
   def set_numeric_item(self, k, v ):
-    self.stats[k] = v
+    self.data[k] = v
     self.save()
+  '''
   
   # Sets the needle to the current HP
   def show_curr_hp(self):
-    hp = self.stats['hp']
-    self.show_hp( hp[0] + hp[2] )
+    hp = self.data[_HP]
+    self.show_hp( hp[_HP_CURR] + hp[_HP_TEMP] )
   
   # Gets the max displayable HP value
   def max_displayable_hp(self):
-    hp = self.stats['hp']
-    return max( hp[1], hp[0] + hp[3] )
+    hp = self.data[_HP]
+    return max( hp[_HP_MAX], hp[_HP_CURR] + hp[_HP_ORIGTEMP] )
 
   # Sets the needle to an arbitrary HP value within range (clamps at min/max)
   def show_hp(self,hp):
@@ -879,30 +1031,30 @@ class Character:
   # Optionally updates display
   def draw_mtx_stable(self, show=True):
     
-    stats = self.stats
+    stats = self.data
     fb = self.hal.mtx.bitmap
     
     # Given a line and a number, will light up that many lights from the right
     # LSB is at left of display
-    def draw_spell_charge( line, curr, max ):
+    def draw_spell_charge( line, curr ):
       fb[ line ] = 256 - ( 1 << (8-curr) ) # Draw the line of lights
     
     self.hal.mtx.clear()
     
     # Go through all charges to update the matrix fb
-    for i,c in enumerate(stats['charges']):
-      draw_spell_charge( i, c['curr'], c['max'] )
+    for i,c in enumerate(stats[_CHARGES]):
+      draw_spell_charge( i, c[_CHARGES_CURR] )
     
     # Go through all spell slots to update the matrix fb
-    for i,s in enumerate(stats['spells']):
-      draw_spell_charge( 15-i, s[0], s[1] )
+    for i,s in enumerate(stats[_SPELLS][_SPELLS_CURR]):
+      draw_spell_charge( 15-i, s )
     
     if show:
       self.hal.mtx.update()
   
   def draw_mtx_saves(self, show=True):
     
-    death = self.stats['death']
+    death = self.data[_DEATH]
     mtx = self.hal.mtx
     
     mtx.clear()
