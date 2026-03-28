@@ -2,7 +2,7 @@
 # Consider as part of character.py
 #
 # T. Lloyd
-# 26 Mar 2026
+# 28 Mar 2026
 
 from micropython import const
 
@@ -43,7 +43,7 @@ _SPELLS_CURR = const(0)
 _CHARGES_CURR = const(0)
 #_CHARGES_MAX = const(1)
 #_CHARGES_RESET = const(2)
-#_CHARGES_NAME = const(4)
+#_CHARGES_NAME = const(3)
 #
 _DEATH_STATUS = const(0)
 _DEATH_OK = const(1)

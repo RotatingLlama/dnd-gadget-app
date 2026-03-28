@@ -1,5 +1,10 @@
 TODO
 ====
+* BUGS:
+  - character.py changes STILL NOT TESTED FULLY
+  - SimpleAdjusters do not trigger save countdown, and actually cancel pending save
+  - Overdamage makes hp go -ve, which overflows container
+- Should be able to get temp hp (and take damage) during death saves.  temp hp buffer against damage, but don't stabilise.
 - _char_gfx.py:
   - Make draw_play_screen() give drawThickArc() a scratch buffer
   - Move draw_play_screen() into character.py proper
@@ -21,6 +26,8 @@ TODO
   - Better deathsaves matrix menu, current one is a bit basic and underwhelming
 * character.py:
   - save_now() add optional force arg, otherwise do nothing unless char is dirty
+  - If error during character load, output error in text file in char dir
+  - Should mention (print or add to report) if an element was missing and a default assumed
 - Prompt to add health after spending hit dice on short rest
 - hw.py: Make 'low battery' threshold a round percentage instead of a voltage value
 * Add ability to adjust max HP during play

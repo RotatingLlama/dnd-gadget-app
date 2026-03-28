@@ -1,7 +1,7 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 26 Mar 2026
+# 28 Mar 2026
 
 # Builtin libraries
 import os
@@ -64,7 +64,7 @@ _SPELLS_MAX = const(1)
 _CHARGES_CURR = const(0)
 _CHARGES_MAX = const(1)
 _CHARGES_RESET = const(2)
-_CHARGES_NAME = const(4)
+_CHARGES_NAME = const(3)
 #
 _DEATH_STATUS = const(0)
 _DEATH_OK = const(1)
@@ -283,11 +283,11 @@ class Character:
     #gpf = 
     try:
       gp = (
-        int( fs.get('copper',0) )
-        int( fs.get('silver',0) )
-        int( fs.get('electrum',0) )
-        int( fs.get('gold',0) )
-        int( fs.get('platinum',0) )
+        int( fs.get('copper',0) ),
+        int( fs.get('silver',0) ),
+        int( fs.get('electrum',0) ),
+        int( fs.get('gold',0) ),
+        int( fs.get('platinum',0) ),
       )
     except ( ValueError, TypeError ) as e:
       raise CharacterError('Invalid currency')
@@ -388,7 +388,7 @@ class Character:
       #if not ( 0 <= ch[i]['curr'] <= ch[i]['max'] ):
       #  raise CharacterError( f'Bad charge #{i+1}' )
       rstf = c.get( 'reset', [] )
-      if type(rst) is not list:
+      if type(rstf) is not list:
         raise CharacterError( f'Charge #{i+1} has invalid reset' )
       r = {
         'sr' : _CHARGE_RESET_SR,
@@ -579,7 +579,10 @@ class Character:
       'platinum': s[_CURRENCY][_CURRENCY_PLATINUM],
       'hp'      : dict(zip( ( 'current', 'max', 'temporary' ), s[_HP][:3] )),
       'hitdice' : dict(zip( ('current','max'), s[_HD] )),
-      'spells'  : list(zip( s[_SPELLS][_SPELLS_CURR], s[_SPELLS][_SPELLS_MAX] )), #[ dict(zip( ('current','max'), sp )) for sp in s[_SPELLS] ],
+      'spells'  : [
+        dict(zip( ('current','max'), sp )) for sp in 
+        zip( s[_SPELLS][_SPELLS_CURR], s[_SPELLS][_SPELLS_MAX] )
+      ],
       'charges' : [ {
         'name'    : c[_CHARGES_NAME],
         'current' : c[_CHARGES_CURR],
@@ -592,6 +595,7 @@ class Character:
         'failures'  :s[_DEATH][_DEATH_NG],
       },
     }
+    print(sf)
     
     try:
       with open( f, 'w') as fd:
@@ -798,17 +802,22 @@ class Character:
     tmp_cache = hp[_HP_TEMP]
     
     # Update HP and Temp HP
-    hp[_HP_CURR], hp[_HP_TEMP] = self.damage_calc( amt )
+    cur, temp = self.damage_calc( amt )
     
     # If Temp HP is zero, set max temp hp to zero too
-    if hp[_HP_TEMP] == 0:
+    if temp == 0:
       hp[_HP_ORIGTEMP] = 0
     
     # Extract any overdamage, clamp HP to zero
     od = 0
-    if hp[_HP_CURR] < 0:
-      od = -hp[_HP_CURR]
-      hp[_HP_CURR] = 0
+    if cur < 0:
+      od = -cur
+      cur = 0
+    
+    # Assign after clamping (array uses unsigned ints and can't handle negatives)
+    hp[_HP_CURR] = cur
+    hp[_HP_TEMP] = temp
+    del cur, temp
     
     # Is the overdamage >= max HP?
     if od >= hp[_HP_MAX]:
