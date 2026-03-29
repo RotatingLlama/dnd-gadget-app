@@ -1,9 +1,6 @@
 TODO
 ====
-* BUGS:
-  - character.py changes STILL NOT TESTED FULLY
-  - SimpleAdjusters do not trigger save countdown, and actually cancel pending save
-  - Overdamage makes hp go -ve, which overflows container
+- Move draw_mtx_* out of character.py and into menu.py.  Should be part of MatrixMenu
 - Should be able to get temp hp (and take damage) during death saves.  temp hp buffer against damage, but don't stabilise.
 - _char_gfx.py:
   - Make draw_play_screen() give drawThickArc() a scratch buffer
@@ -21,6 +18,11 @@ TODO
     - Both of these have opinions about how many charges are permissible
     - These opinions should always match, or better yet come from the same source
 * Rework savefile structure to include level options (refer to Github issue)
+- Allow save files to specify what ruleset applies to them
+  - 2014, 2024, pathfinder, etc
+  - make _play_screen() in gadget.py selectable (different rulesets will need different menu options)
+  - make Character class in character.py selectable (different rulesets will need different character behaviour and save options)
+  - everything else should be agnostic to this
 - Death saves wishlist:
   - Better eink graphics to really sell the peril
   - Better deathsaves matrix menu, current one is a bit basic and underwhelming
@@ -35,11 +37,6 @@ TODO
   - Record new max hp - absolute or relative?
   - Existing HP is not affected by max hp change except for getting clamped.  Health is conserved quantity, not damage.
   - What to do with existing code that looks at max hp?
-- Allow save files to specify what ruleset applies to them
-  - 2014, 2024, pathfinder, etc
-  - make _play_screen() in gadget.py selectable (different rulesets will need different menu options)
-  - make Character class in character.py selectable (different rulesets will need different character behaviour and save options)
-  - everything else should be agnostic to this
 - How to handle things that don't regain all charges on reset (eg. Armour of Magical Strength)
 * spell slots can reset on short rest for some classes
 - Smaller NOSD logo for when there's no SD but that's ok

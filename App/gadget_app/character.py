@@ -1,7 +1,7 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 28 Mar 2026
+# 29 Mar 2026
 
 # Builtin libraries
 import os
@@ -19,19 +19,28 @@ from . import _char_menus as _cm
 from . import _char_gfx as gfx
 from .common import DeferredTask, CHAR_STATS, INTERNAL_SAVEDIR, HAL_PRIORITY_MENU, HAL_PRIORITY_IDLE
 
+# Constants
+_SIZE_MPY_SMALLINT = const(0x3fffffff) # https://github.com/orgs/micropython/discussions/10315#discussioncomment-4490600
+_SIZE_UINT8 = const(0xff)
+_SIZE_UINT16 = const(0xffff)
+
+# Config
 _SAVE_TIMEOUT = const(30000) # Save contdown, in ms
 
 # Global maximums
-_MAX_NAMELEN = const(16)
-_MAX_TITLELEN = const(16)
-_MAX_XP = const(0xffffffff)
-_MAX_CURRENCY = const(0xffff)
-_MAX_HITDICE = const(255) # Max possible number of hit dice
-_MAX_HP = const(0xffff)
-_MAX_SPELL_LEVELS = const(9)
-_MAX_SPELLSLOTS = const(6) # Max number of spell slots at each level
-_MAX_CHARGE_ITEMS = const(16) # When loading from file, load no more than this many of each item
-_MAX_CHARGENAME_LEN = const(45) # 360/8
+_MAX_NAMELEN = const(16) # Most that'll fit on the screen
+_MAX_TITLELEN = const(16) # Most that'll fit on the screen
+_MAX_XP = const(_SIZE_MPY_SMALLINT) # Kept in memory as a Python integer.  
+_MAX_CURRENCY = const(_SIZE_UINT16) # (array H) Highest value for all currency counters
+_MAX_HITDICE = const(_SIZE_UINT8) # (bytearray) Max possible number of hit dice
+_MAX_HP = const(_SIZE_UINT16) # (array H) Highest value for hit points
+_MAX_TEMPHP = const(_SIZE_UINT16) # (array H) Highest value for hit points
+_MAX_SPELL_LEVELS = const(9) # 5e SRD
+_MAX_SPELLSLOTS = const(6) # (MatrixMenu display limitation) Max number of spell slots at each level
+_MAX_CHARGE_ITEMS = const(16) # (MatrixMenu display limitation) When loading from file, load no more than this many of each item
+_MAX_CHARGENAME_LEN = const(45) # The most characters that will fit on the eink: 360/8
+_MAX_CHARGE_LEVEL = const(_SIZE_MPY_SMALLINT) # (Python integer) The most charges an item can have
+_MAX_DEATH_SAVES = const(3) # (5e SRD) How many successes or failures can we have?
 
 # Indexes into the Character.data object
 _NAME = const(0)
@@ -160,6 +169,11 @@ def _rst_to_list(bf:int) -> list:
     bf = bf >> 1
     i += 1
   return b
+
+# Given number, returns a byte to send to the matrix to represent that number
+# LSB is at left of display
+num2mtx = lambda x : 256 - ( 1 << (8-x) )
+
 
 # hal: The HAL object from hal.py
 # sd_mounted: A callable which will return a boolean indicating whether the SD card is ready for read/write
@@ -378,10 +392,12 @@ class Character:
         mx = int( c.get('max',0) )
         cur = int( c.get('current',mx) )
       except ( ValueError, TypeError ) as e: # Invalid datatype
-        raise CharacterError( f'Bad charge #{i+1}' )
-      if mx and not cur <= mx: # Current is not less than max (if max is set)
-        raise CharacterError( f'Bad charge #{i+1}' )
-      if not 0 <= cur: # Current is less than zero
+        raise CharacterError( f'Bad charge format #{i+1}' )
+      if not 0 <= mx <= _MAX_CHARGE_LEVEL: # Max level is ok?
+        raise CharacterError( f'Bad charge max level #{i+1}' )
+      if not 0 <= cur <= _MAX_CHARGE_LEVEL: # Current level is ok?
+        raise CharacterError( f'Bad charge current level #{i+1}' )
+      if mx and cur > mx: # Current is not more than max (if max is set)?
         raise CharacterError( f'Bad charge #{i+1}' )
       #if ch[i]['curr'] == -1: # Wasn't specified
       #  ch[i]['curr'] = ch[i]['max'] # Start at full (max)
@@ -744,30 +760,28 @@ class Character:
       return
     
     # Can't heal if we're dead
-    if death[_DEATH_STATUS] == _DEATH_STATUS_DD or death[_DEATH_NG] >= 3:
+    if death[_DEATH_STATUS] == _DEATH_STATUS_DD or death[_DEATH_NG] >= _MAX_DEATH_SAVES:
       return
     
-    # Add the HP
-    hp[_HP_CURR] += amt
-    
-    # Can't heal past max
-    if hp[_HP_CURR] > hp[_HP_MAX]:
-      hp[_HP_CURR] = hp[_HP_MAX]
+    # Add the HP, silently capping at HP_MAX
+    hp[_HP_CURR] = min( hp[_HP_CURR]+amt, hp[_HP_MAX] )
     
     # If we were in death saves, stabilise
     if death[_DEATH_STATUS] == _DEATH_STATUS_SV:
-      self.stabilise(show=show)
+      self.save()
+      self.stabilise(show=show) # stablise() will also call save() if it needs to
       return
     
     self.save()
     
-    if hp[2] > 0:
+    if hp[_HP_TEMP] > 0:
       self.draw_eink( show=show )
     
     if show:
       self.show_curr_hp()
   
-  # Returns ( new_hp, new_temp )
+  # Returns ( new_hp, new_temp ).  Just a calculator, doesn't change anything
+  # Guarantees that new_temp will be zero or positive, but allows new_hp to be negative
   def damage_calc( self, amt ):
     
     # Get the current levels
@@ -801,35 +815,28 @@ class Character:
     # Affects whether we need to update eink
     tmp_cache = hp[_HP_TEMP]
     
-    # Update HP and Temp HP
-    cur, temp = self.damage_calc( amt )
+    # Get new HP and Temp HP (note cur might be -ve)
+    cur, hp[_HP_TEMP] = self.damage_calc( amt )
+    
+    # Assign clamped HP value (array uses unsigned ints and can't handle negatives)
+    hp[_HP_CURR] = max( cur, 0 )
     
     # If Temp HP is zero, set max temp hp to zero too
-    if temp == 0:
+    if hp[_HP_TEMP] == 0:
       hp[_HP_ORIGTEMP] = 0
     
-    # Extract any overdamage, clamp HP to zero
-    od = 0
-    if cur < 0:
-      od = -cur
-      cur = 0
-    
-    # Assign after clamping (array uses unsigned ints and can't handle negatives)
-    hp[_HP_CURR] = cur
-    hp[_HP_TEMP] = temp
-    del cur, temp
+    # We've now assigned all necessary HP changes
+    self.save()
     
     # Is the overdamage >= max HP?
-    if od >= hp[_HP_MAX]:
-      self.die()
+    if -cur >= hp[_HP_MAX]:
+      self.die() # die() will also call save() if it needs to
       return
     
     # Do we need to enter death saves?
     if hp[_HP_CURR] == 0:
-      self.deathsaves()
+      self.deathsaves() # deathsaves() will also call save() if it needs to
       return
-    
-    self.save()
     
     # Only way damage can cause eink redraw is by dropping temp hp to zero
     if tmp_cache > 0 and hp[_HP_TEMP] == 0:
@@ -846,25 +853,23 @@ class Character:
     assert type(val) is int
     assert val >= 0
     
+    # Localise
+    hp = self.data[_HP]
+    
     # Prevent accidental fires from triggering e-ink refresh
-    if self.data[_HP][_HP_TEMP] == 0 and val == 0:
+    if hp[_HP_TEMP] == 0 and val == 0:
       return
     
-    # eink update needed?
-    e = False
-    
-    self.data[_HP][_HP_TEMP] = val # Current temp
+    # Assign the new value (clamped to max)
+    hp[_HP_TEMP] = min( val, _MAX_TEMPHP )
     
     # Are we setting a different level from current?
-    if val != self.data[_HP][_HP_ORIGTEMP]:
-      self.data[_HP][_HP_ORIGTEMP] = val # Update max temp
-      e = True # eink update required
+    if hp[_HP_TEMP] != hp[_HP_ORIGTEMP]:
+      hp[_HP_ORIGTEMP] = hp[_HP_TEMP] # Update max temp
+      self.draw_eink( show=show ) # Update eink
     
     self.save()
     
-    if e:
-      self.draw_eink( show=show )
-      
     if show:
       self.show_curr_hp()
   
@@ -913,13 +918,13 @@ class Character:
       raise RuntimeError('Attempted to enter death save result when not in death saves!')
     
     # Validate
-    if not 0 <= val <= 3:
+    if not 0 <= val <= _MAX_DEATH_SAVES:
       return
     
     if success: # Try to change the number of successes
       
       # Can't change successes if we're already dead
-      if d[_DEATH_NG] >= 3:
+      if d[_DEATH_NG] >= _MAX_DEATH_SAVES:
         return
       
       d[_DEATH_OK] = val
@@ -927,11 +932,11 @@ class Character:
     else: # Try to change the number of failures
       
       # Can't change failures if we've already succeeded
-      if d[_DEATH_OK] >= 3:
+      if d[_DEATH_OK] >= _MAX_DEATH_SAVES:
         return
       
       # Are we setting xor unsetting a failure state?
-      update_menu = bool( (d[_DEATH_NG]==3) ^ (val==3) )
+      update_menu = bool( (d[_DEATH_NG]==_MAX_DEATH_SAVES) ^ (val==_MAX_DEATH_SAVES) )
       
       # Update the value
       d[_DEATH_NG] = val
@@ -964,13 +969,16 @@ class Character:
   
   # Sets the max hit points
   # DOES validate
+  # NOT USED ANYWHERE
+  '''
   def set_max_hp( self, val, show=True ):
+    raise NotImplementedError
     
     assert type(val) is int
     assert val >= 1
     
     # Set the max
-    self.data[_HP][_HP_MAX] = val
+    self.data[_HP][_HP_MAX] = val # TODO: Clamp to max value
     
     # Clamp current to new max
     if self.data[_HP][_HP_CURR] > val:
@@ -982,6 +990,7 @@ class Character:
     
     if show:
       self.show_curr_hp()
+  '''
   
   # Sets the current hit dice
   # DOES validate
@@ -1018,14 +1027,19 @@ class Character:
   # Updates the matrix fb.  Optionally also sends the fb.
   def set_charge( self, chg, val, show=True ):
     
+    assert type(val) is int
+    assert val >= 0
+    
     # Get the charge object
     c = self.data[_CHARGES][chg]
     
-    # Is the new number valid?
+    # Is there a max level for _this_ charge, and does the new val violate it?
     if c[_CHARGES_MAX] and not 0 <= val <= c[_CHARGES_MAX]:
       return
     
-    c[_CHARGES_CURR] = val
+    # Clamp to (max level for _any_ charge)
+    c[_CHARGES_CURR] = min( val, _MAX_CHARGE_LEVEL )
+    
     self.save()
     self.draw_mtx_stable(show=show)
   
@@ -1043,18 +1057,23 @@ class Character:
   def get_title(self) -> str:
     return self.data[_TITLE]
   
-  # Does NOT validate
+  # DOES validate
   def set_xp(self, xp:int ):
-    self.data[_XP] = xp
+    assert type(xp) is int
+    assert xp >= 0
+    self.data[_XP] = min( xp, _MAX_XP )
+    self.save()
   
-  # Does NOT validate
+  # DOES validate
   def set_currency(self, c:int, val:int ):
-    self.data[_CURRENCY][c] = val
+    assert type(val) is int
+    assert val >= 0
+    self.data[_CURRENCY][c] = min( val, _MAX_CURRENCY )
+    self.save()
   
   # Sets the needle to the current HP
   def show_curr_hp(self):
-    hp = self.data[_HP]
-    self.show_hp( hp[_HP_CURR] + hp[_HP_TEMP] )
+    self.show_hp( self.data[_HP][_HP_CURR] + self.data[_HP][_HP_TEMP] )
   
   # Gets the max displayable HP value
   def max_displayable_hp(self):
@@ -1073,25 +1092,20 @@ class Character:
   def draw_mtx_stable(self, show=True):
     
     data = self.data
-    fb = self.hal.mtx.bitmap
+    mtx = self.hal.mtx
     
-    # Given a line and a number, will light up that many lights from the right
-    # LSB is at left of display
-    def draw_spell_charge( line, curr ):
-      fb[ line ] = 256 - ( 1 << (8-curr) ) # Draw the line of lights
-    
-    self.hal.mtx.clear()
+    mtx.clear()
     
     # Go through all charges to update the matrix fb
     for i,c in enumerate(data[_CHARGES]):
-      draw_spell_charge( i, c[_CHARGES_CURR] )
+      mtx.bitmap[i] = num2mtx( c[_CHARGES_CURR] )
     
     # Go through all spell slots to update the matrix fb
     for i,s in enumerate(data[_SPELLS][_SPELLS_CURR]):
-      draw_spell_charge( 15-i, s )
+      mtx.bitmap[ 15-i ] = num2mtx(s)
     
     if show:
-      self.hal.mtx.update()
+      mtx.update()
   
   def draw_mtx_saves(self, show=True):
     
@@ -1101,8 +1115,8 @@ class Character:
     mtx.clear()
     
     # LSB is at left of display
-    mtx.bitmap[0] = 256 - ( 1 << (8-death[_DEATH_OK]) )
-    mtx.bitmap[1] = 256 - ( 1 << (8-death[_DEATH_NG]) )
+    mtx.bitmap[0] = num2mtx( death[_DEATH_OK] )
+    mtx.bitmap[1] = num2mtx( death[_DEATH_NG] )
     
     if show:
       mtx.update()
@@ -1110,9 +1124,10 @@ class Character:
   # Draw a skull on the matrix
   def draw_mtx_dead(self, show=True):
     mtx = self.hal.mtx
-    mtx.clear()
+    #mtx.clear()
     #mtx.bitmap[:8] = bytes((0x00,0x3e,0x7f,0x49,0x49,0x77,0x3e,0x2a)) # 7x7 skull
     mtx.bitmap[:8] = bytes((0x7e,0xff,0x81,0x99,0xe7,0x7e,0x24,0x24)) # 8x8 skull
+    mtx.bitmap[8:] = bytes((0,)*8) # Blank
     if show:
       mtx.update()
   
