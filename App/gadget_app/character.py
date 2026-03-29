@@ -6,11 +6,10 @@
 # Builtin libraries
 import os
 from micropython import const
+from array import array
 from gc import collect as gc_collect
 import json
 import errno
-
-from array import array
 
 # Our stuff
 from .pathlib import Path # Not a builtin in MicroPython (but mirrors CPython)
@@ -19,13 +18,13 @@ from . import _char_menus as _cm
 from . import _char_gfx as gfx
 from .common import DeferredTask, CHAR_STATS, INTERNAL_SAVEDIR, HAL_PRIORITY_MENU, HAL_PRIORITY_IDLE
 
+# Config
+_SAVE_TIMEOUT = const(30000) # Save contdown, in ms
+
 # Constants
 _SIZE_MPY_SMALLINT = const(0x3fffffff) # https://github.com/orgs/micropython/discussions/10315#discussioncomment-4490600
 _SIZE_UINT8 = const(0xff)
 _SIZE_UINT16 = const(0xffff)
-
-# Config
-_SAVE_TIMEOUT = const(30000) # Save contdown, in ms
 
 # Global maximums
 _MAX_NAMELEN = const(16) # Most that'll fit on the screen
@@ -89,6 +88,7 @@ _DEATH_STATUS_SV = const(1)
 _DEATH_STATUS_DD = const(2)
 _DEATH_STATUS_TUPLE = ('stable','saves','dead')
 
+# Exists so that a consistent error type can be passed from the Character object
 class CharacterError( RuntimeError ):
   pass
 
@@ -110,50 +110,6 @@ def try_sync() -> bool:
     ok = ok and r
   
   return ok
-"""
-# Check a string: correct type and has length
-def val_str(s,t):
-  if type(s) is not str:
-    return 'Bad '+t
-  if len(s) == 0:
-    return 'Empty '+t
-
-# Check a string: correct type
-def val_zstr(s,t):
-  if type(s) is not str:
-    return 'Bad '+t
-
-# Check an integer: correct type and >= 0
-def val_zpint(v,t):
-  try:
-    v = int(v)
-  except ValueError:
-    return t+' must be integer'
-  if v < 0:
-    return t+' must be >= 0'
-"""
-# Individual params.  HP, Spells and Charges are treated differently.
-# load() will check:
-# 1. Does the parameter name in the file match an entry here?
-# 2. Does its value validate against the function here?
-# 3. Pass it through the conversion function here
-# 4. Store it here
-# 5. Later, load from here into main stats dictionary
-# Complex parameters (HP, spells/charges, hit dice) are dealt with separately.
-# If default value is None, param is mandatory
-# [ value, validation function, conversion function, default value ]
-'''
-PARAMS = {
-  'name'    : [None, lambda s: val_str(s,'name'),      lambda x:x, None],
-  'title'   : [None, lambda s: val_zstr(s,'title'),    lambda x:x, ''],
-  'xp'      : [None, lambda v: val_zpint(v,'XP'),      int,        0],
-  'gold'    : [None, lambda v: val_zpint(v,'Gold'),    int,        0],
-  'silver'  : [None, lambda v: val_zpint(v,'Silver'),  int,        0],
-  'copper'  : [None, lambda v: val_zpint(v,'Copper'),  int,        0],
-  'electrum': [None, lambda v: val_zpint(v,'Electrum'),int,        0],
-  'platinum': [None, lambda v: val_zpint(v,'Platinum'),int,        0],
-}
-'''
 
 # Save helper function
 # Converts charge's reset bitarray to a string tuple
@@ -170,7 +126,7 @@ def _rst_to_list(bf:int) -> list:
     i += 1
   return b
 
-# Given number, returns a byte to send to the matrix to represent that number
+# Given a number, returns a byte to send to the matrix to represent that number
 # LSB is at left of display
 num2mtx = lambda x : 256 - ( 1 << (8-x) )
 
@@ -199,11 +155,6 @@ class Character:
     
     # Debug purposes
     self._enable_eink = enable_eink
-    
-    # Stats
-    # This will get populated during load() with all the simple PARAMS (above) so they don't need to be defined here
-    # But hp/hd/spell/cherge/death structures need to pre-exist
-    #self.stats = {}
     
     # Whenever anything updates self.stats, it also calls self.save()
     # self.save() calls self._saver.touch() and sets self._dirty
@@ -247,29 +198,6 @@ class Character:
     
     del uts, ts, f, fd
     gc_collect()
-    '''
-    # Step through the expected simple parameters
-    for k in PARAMS:
-      
-      # Get the parameter object (list)
-      p = PARAMS[k]
-      
-      # Reset the value container - needed?
-      p[0] = None
-      
-      # Try to get the value
-      v = fs.get( k, p[3] )
-      if v is None:
-        raise CharacterError( f'Missing {k}' )
-      
-      # Validate the value
-      e = p[1]( v )
-      if e:
-        raise CharacterError(e)
-      
-      # Convert and temporarily store the value
-      p[0] = p[2]( v )
-    '''
     
     # Name
     try:
@@ -294,7 +222,6 @@ class Character:
       raise CharacterError('Invalid XP')
     
     # Get and validate currency
-    #gpf = 
     try:
       gp = (
         int( fs.get('copper',0) ),
@@ -307,7 +234,7 @@ class Character:
       raise CharacterError('Invalid currency')
     if not all([ 0 <= x <= _MAX_CURRENCY for x in gp ]):
       raise CharacterError('Invalid currency value')
-    currency = array( 'H', gp )# Unsigned short (2 bytes)
+    currency = array( 'H', gp ) # Unsigned short (2 bytes)
     del gp
     
     # Get and validate hit dice
@@ -357,23 +284,15 @@ class Character:
     num_spells = min( _MAX_SPELL_LEVELS, len(spf) )
     sp_curr = bytearray(num_spells)
     sp_max = bytearray(num_spells)
-    #sp = [None] * min( _MAX_SPELL_LEVELS, len(spf) )
-    #for i, s in enumerate( spf[:_MAX_SPELL_LEVELS] ):
     for i in range(num_spells):
       if type(spf[i]) is not dict:
         raise CharacterError( f'Bad spell slot #{i+1}' )
       try:
         mx = int( spf[i].get('max') )
         cur = int( spf[i].get( 'current', mx ) ) # Default to full if not specified
-        #sp[i] = [ int( s.get('current',-1) ), int( s.get('max') ) ]
       except ( ValueError, TypeError ) as e:
         raise CharacterError( f'Bad spell slot #{i+1}' )
-      if not 0 <= mx <= _MAX_SPELLSLOTS:
-        raise CharacterError( f'Bad spell slot #{i+1}' )
-      #if sp[i][0] == -1: # Wasn't specified
-      #  sp[i][0] = sp[i][1] # Start at full (max)
-      #if not ( 0 <= sp[i][0] <= sp[i][1] ):
-      if not ( 0 <= cur <= mx ):
+      if not 0 <= cur <= mx <= _MAX_SPELLSLOTS:
         raise CharacterError( f'Bad spell slot #{i+1}' )
       sp_curr[i] = cur
       sp_max[i] = mx
@@ -399,10 +318,6 @@ class Character:
         raise CharacterError( f'Bad charge current level #{i+1}' )
       if mx and cur > mx: # Current is not more than max (if max is set)?
         raise CharacterError( f'Bad charge #{i+1}' )
-      #if ch[i]['curr'] == -1: # Wasn't specified
-      #  ch[i]['curr'] = ch[i]['max'] # Start at full (max)
-      #if not ( 0 <= ch[i]['curr'] <= ch[i]['max'] ):
-      #  raise CharacterError( f'Bad charge #{i+1}' )
       rstf = c.get( 'reset', [] )
       if type(rstf) is not list:
         raise CharacterError( f'Charge #{i+1} has invalid reset' )
@@ -411,24 +326,19 @@ class Character:
         'lr' : _CHARGE_RESET_LR,
         'dawn' : _CHARGE_RESET_DAWN,
       }
-      rst = sum([ r.get( x, 0 ) for x in rstf ])
-      
-      #for r in rst:
-      #  if r in ( 'lr', 'sr', 'dawn' ):
-      #    ch[i]['reset'].append( r )
       ch[i] = [
         cur,
         mx,
-        rst,
+        sum([ r.get( x, 0 ) for x in rstf ]), # Reset bitfield
         nm
       ]
     del chf, r, rstf
     
     # Get and validate death
     df = fs.get( 'death', {} )
-    di = { 'stable':_DEATH_STATUS_OK, 'saves':_DEATH_STATUS_SV, 'dead':_DEATH_STATUS_DD }
     if type(df) is not dict:
       raise CharacterError( 'Invalid death section' )
+    di = { 'stable':_DEATH_STATUS_OK, 'saves':_DEATH_STATUS_SV, 'dead':_DEATH_STATUS_DD }
     try:
       d = bytearray([
         di.get( df.get('status','stable'), _DEATH_STATUS_OK ),
@@ -455,16 +365,6 @@ class Character:
       ch,
       d,
     ]
-    '''
-    self.stats = { k: PARAMS[k][0] for k in PARAMS }
-    self.stats.update({
-      'hd' : hd,
-      'hp' : hp,
-      'spells' : 
-      'charges' : ch,
-      'death' : d,
-    })
-    '''
   
   # Constructs the play screen and menus
   def activate(self):
@@ -611,7 +511,7 @@ class Character:
         'failures'  :s[_DEATH][_DEATH_NG],
       },
     }
-    print(sf)
+    #print(sf)
     
     try:
       with open( f, 'w') as fd:
@@ -662,6 +562,12 @@ class Character:
   def save(self):
     self._saver.touch()
     self._dirty = True
+  
+  # Simple convenience function getters
+  def get_name(self) -> str:
+    return self.data[_NAME]
+  def get_title(self) -> str:
+    return self.data[_TITLE]
   
   # DOES NOT VALIDATE hit dice
   def short_rest(self, hit_dice=0, show=True):
@@ -896,7 +802,7 @@ class Character:
     
     # Go
     self._playscreen(show=show)
-  #
+  
   # Conveience functions to trigger status change.  All use _death_status()
   def stabilise(self, show=True ):
     self._death_status(_DEATH_STATUS_OK,show=show)
@@ -965,7 +871,8 @@ class Character:
     
     # Do it
     self.data[_HP][_HP_CURR] = hp
-    self.stabilise()
+    self.save()
+    self.stabilise() # stabilise() will also call save() if it needs to
   
   # Sets the max hit points
   # DOES validate
@@ -1009,16 +916,16 @@ class Character:
   # Set a spell level to a given number of slots
   # DOES validate
   # Updates the matrix fb.  Optionally also sends the fb.
-  def set_spell( self, spl, val, show=True ):
+  def set_spell( self, lvl, val, show=True ):
     
     # Get the spell object
     s = self.data[_SPELLS]
     
     # Is the new number valid?
-    if not 0 <= val <= s[_SPELLS_MAX][spl]:
+    if not 0 <= val <= s[_SPELLS_MAX][lvl]:
       return
     
-    s[_SPELLS_CURR][spl] = val
+    s[_SPELLS_CURR][lvl] = val
     self.save()
     self.draw_mtx_stable(show=show)
   
@@ -1037,38 +944,24 @@ class Character:
     if c[_CHARGES_MAX] and not 0 <= val <= c[_CHARGES_MAX]:
       return
     
-    # Clamp to (max level for _any_ charge)
+    # Silently clamp to (max level for _any_ charge)
     c[_CHARGES_CURR] = min( val, _MAX_CHARGE_LEVEL )
     
     self.save()
     self.draw_mtx_stable(show=show)
   
-  # Helper function for these numeric-only things
-  # Does NOT validate
-  '''
-  def set_numeric_item(self, k, v ):
-    self.data[k] = v
-    self.save()
-  '''
-  
-  # Simple convenience function getters
-  def get_name(self) -> str:
-    return self.data[_NAME]
-  def get_title(self) -> str:
-    return self.data[_TITLE]
-  
   # DOES validate
   def set_xp(self, xp:int ):
     assert type(xp) is int
     assert xp >= 0
-    self.data[_XP] = min( xp, _MAX_XP )
+    self.data[_XP] = min( xp, _MAX_XP ) # Silently clamp maximum
     self.save()
   
   # DOES validate
   def set_currency(self, c:int, val:int ):
     assert type(val) is int
     assert val >= 0
-    self.data[_CURRENCY][c] = min( val, _MAX_CURRENCY )
+    self.data[_CURRENCY][c] = min( val, _MAX_CURRENCY ) # Silently clamp maximum
     self.save()
   
   # Sets the needle to the current HP
@@ -1113,8 +1006,6 @@ class Character:
     mtx = self.hal.mtx
     
     mtx.clear()
-    
-    # LSB is at left of display
     mtx.bitmap[0] = num2mtx( death[_DEATH_OK] )
     mtx.bitmap[1] = num2mtx( death[_DEATH_NG] )
     

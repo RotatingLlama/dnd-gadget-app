@@ -1,11 +1,11 @@
 TODO
 ====
-- Move draw_mtx_* out of character.py and into menu.py.  Should be part of MatrixMenu
-- Should be able to get temp hp (and take damage) during death saves.  temp hp buffer against damage, but don't stabilise.
+* Should be able to get temp hp (and take damage) during death saves.  temp hp buffer against damage, but don't stabilise.
 - _char_gfx.py:
   - Make draw_play_screen() give drawThickArc() a scratch buffer
   - Move draw_play_screen() into character.py proper
   - Move the rest back into gfx.py
+- Move draw_mtx_* out of character.py and into menu.py.  Should be part of MatrixMenu
 * Combine 'charges' and other counters (gold, xp etc.)
   - 'max' property is optional
   - Assume zero minimum
@@ -23,22 +23,22 @@ TODO
   - make _play_screen() in gadget.py selectable (different rulesets will need different menu options)
   - make Character class in character.py selectable (different rulesets will need different character behaviour and save options)
   - everything else should be agnostic to this
-- Death saves wishlist:
-  - Better eink graphics to really sell the peril
-  - Better deathsaves matrix menu, current one is a bit basic and underwhelming
 * character.py:
   - save_now() add optional force arg, otherwise do nothing unless char is dirty
   - If error during character load, output error in text file in char dir
   - Should mention (print or add to report) if an element was missing and a default assumed
-- Prompt to add health after spending hit dice on short rest
-- hw.py: Make 'low battery' threshold a round percentage instead of a voltage value
 * Add ability to adjust max HP during play
   - Store original max hp
   - Record new max hp - absolute or relative?
   - Existing HP is not affected by max hp change except for getting clamped.  Health is conserved quantity, not damage.
   - What to do with existing code that looks at max hp?
+- Death saves wishlist:
+  - Better eink graphics to really sell the peril
+  - Better deathsaves matrix menu, current one is a bit basic and underwhelming
+- Prompt to add health after spending hit dice on short rest
 - How to handle things that don't regain all charges on reset (eg. Armour of Magical Strength)
 * spell slots can reset on short rest for some classes
+- hw.py: Make 'low battery' threshold a round percentage instead of a voltage value
 - Smaller NOSD logo for when there's no SD but that's ok
 - Fonts
   - https://github.com/peterhinch/micropython-font-to-py
@@ -114,6 +114,7 @@ Invisible Changes
 * Now sets internal clock at startup based on most recent savefile time
 * Moved code out of gadget.py into new _oledidle.py and _ui.py
 * character.py is now responsible for setting up all UI elements (menus etc) related to gameplay
+* Efficiency improvements to character.py internal data structure
 * Shutting down now actually halts the CPU
 * No need to specify everything in a new character savefile.  Non-mandatory items will now take safe default values
 
