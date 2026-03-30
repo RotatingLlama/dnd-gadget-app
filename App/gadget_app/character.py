@@ -1,7 +1,7 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 29 Mar 2026
+# 30 Mar 2026
 
 # Builtin libraries
 import os
@@ -137,7 +137,7 @@ num2mtx = lambda x : 256 - ( 1 << (8-x) )
 # sysmenu_factory: A function that returns a menu.SubMenu object for appending to the oled menu
 # enable_eink: bool indicating whether to (ever) refesh the eink display.  Useful to save time during debugging.
 class Character:
-  def __init__(self, hal, sd_mounted, chardir:Path, sysmenu_factory, enable_eink=True ):
+  def __init__(self, hal, sd_mounted, chardir:Path, sysmenu_factory, scratchmem=None, enable_eink=True ):
     
     # Where are my files
     if not chardir.is_dir():
@@ -168,6 +168,9 @@ class Character:
     self._active = False # Are we in play?
     self._rootmenu = None
     self._mtx_idle = None # Holder for the CR
+    
+    # Preallocated bytearray for graphics scratchspace
+    self.scratchmem = scratchmem
     
     self._load()
   
@@ -1024,7 +1027,7 @@ class Character:
   
   def draw_eink(self,show=True):
     lowbatt = self.hal.batt_low.is_set() and self.hal.batt_discharge.is_set()
-    gfx.draw_play_screen( fb=self.hal.eink, char=self, lowbatt=lowbatt )
+    gfx.draw_play_screen( fb=self.hal.eink, char=self, lowbatt=lowbatt, scratchmem=self.scratchmem )
     if show and self._enable_eink:
       self.hal.eink_send_refresh()
     gc_collect()

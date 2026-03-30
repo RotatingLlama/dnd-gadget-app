@@ -2,7 +2,7 @@
 # For Micropython v1.26
 #
 # T. Lloyd
-# 26 Mar 2026
+# 30 Mar 2026
 
 
 # TO USE:
@@ -48,6 +48,9 @@ _OLED_IDLE_REFRESH = const(500)
 # How long we expect the eink to take to blank out
 _EINK_BLANK_MS = const(15700)
 
+# Working memory to preallocate for graphics
+_GFX_SCRATCH_SIZE = const(0x2000)
+
 # Make this object here because it's used in a few places
 INTERNAL_SAVEDIR = Path(INTERNAL_SAVEDIR)
 
@@ -69,6 +72,9 @@ class Gadget:
     
     # Load modules
     self.hal = HAL()
+    
+    # Preallocate graphics scratchspace
+    self.scratchmem = bytearray(_GFX_SCRATCH_SIZE)
     
     # Things we want to keep track of
     self.file_root = Path( SD_ROOT ) / SD_DIR
@@ -151,6 +157,7 @@ class Gadget:
           sd_mounted = self.sd_ok.is_set,
           chardir = x,
           sysmenu_factory = self._make_system_submenu,
+          scratchmem = self.scratchmem,
           enable_eink = (not _DEBUG_DISABLE_EINK)
         )
       except CharacterError as e:

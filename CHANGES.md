@@ -77,7 +77,7 @@ TODO
   - Define transparency colour in _blit_onto() - needed at least to construct p_bline
   - Read spec for MONO_VLSB [https://docs.micropython.org/en/latest/library/framebuf.html#framebuf.framebuf.MONO_VLSB]
   - Pixel arrangement for oled is *madness*.  Oled gfx assets are small, just img.load() them and use native fb.blit()
-  - Maybe instead, just have a 'scratch' framebuffer that's used for all off-screen manipulation, to avoid ad-hoc memory allocation
+  - Use gadget.py's scratchmem buffer instead?
 - Support PNG???
   - https://github.com/remixer-dec/mpy-img-decoder/tree/master
   - Also https://github.com/Scondo/purepng

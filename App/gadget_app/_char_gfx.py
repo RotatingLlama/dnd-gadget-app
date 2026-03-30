@@ -1,7 +1,7 @@
 # Drawing functions for character.py
 #
 # T. Lloyd
-# 28 Mar 2026
+# 30 Mar 2026
 
 # Standard libraries
 from micropython import const
@@ -221,12 +221,20 @@ def drawThickArc( fb, x, y, ro, ri, start, end, c=1, scratch=None ):
   bufsize = num_pixels // 8
   
   # Set up the scratch buffer
-  if scratch is not None:
-    if len(scratch) < bufsize:
-      raise IndexError('Provided scratch buffer is too small!')
-    scratch = FrameBuffer( scratch, width, height, MONO_HLSB )
+  if scratch is None:
+    psize = 0
   else:
+    psize = len(scratch)
+  #
+  if psize < bufsize:
+    print(f'drawThickArc(): Not enough scratch provided.  {bufsize} bytes allocated dynamically.')
     scratch = FrameBuffer( bytearray(bufsize), width, height, MONO_HLSB )
+  else:
+    print(f'drawThickArc(): Using provided scratch buffer of size {len(scratch)} ({bufsize} needed)')
+    b_scratch = scratch
+    mv_scratch = memoryview(b_scratch) # Do this so we're definietly working with the correct buffer size
+    scratch = FrameBuffer( mv_scratch[:bufsize], width, height, MONO_HLSB )
+    scratch.fill(0) # Blank out the provided buffer
   
   # Arc will be 1; background will be 0.
   # This will be corrected later, according to c arg
@@ -415,7 +423,7 @@ def tick_txt(fb, txt, pt, c ):
 # Expects 360x240 2bpp framebuffer
 # Needs the Character object
 # lowbatt Boolean will replace character head with a low battery graphic
-def draw_play_screen( fb, char, lowbatt=False ):
+def draw_play_screen( fb, char, lowbatt=False, scratchmem=None ):
   
   # Localisation
   data = char.data
@@ -506,17 +514,17 @@ def draw_play_screen( fb, char, lowbatt=False ):
     a_tmax = a_curr + ( _ATOTAL * r_tmax )
     
     # Draw white background arc
-    drawThickArc( fb, _X, _Y, _RO+1, _RI-1, _ASTART-spb-_APX, a_max+_APX, 0 )
+    drawThickArc( fb, _X, _Y, _RO+1, _RI-1, _ASTART-spb-_APX, a_max+_APX, 0, scratchmem )
     
     # Draw solid arc up to max HP
-    drawThickArc( fb, _X, _Y, _RO, _RI, _ASTART-spb, a_max, 1 )
+    drawThickArc( fb, _X, _Y, _RO, _RI, _ASTART-spb, a_max, 1, scratchmem )
     
     # White out the main arc between current and max HP
     if hp[0] < hp[1]:
-      drawThickArc( fb, _X, _Y, _RO-1, _RI+1, a_curr, a_max-_APX, 0 )
+      drawThickArc( fb, _X, _Y, _RO-1, _RI+1, a_curr, a_max-_APX, 0, scratchmem )
     
     # Draw white background for second (red) arc depicting temp HP
-    drawThickArc( fb, _X, _Y, _ARC2_RO+1, _ARC2_RI-1, a_curr-_APX, a_tmax+_APX, 0 )
+    drawThickArc( fb, _X, _Y, _ARC2_RO+1, _ARC2_RI-1, a_curr-_APX, a_tmax+_APX, 0, scratchmem )
     
     # Tick at half HP, if there's room
     #print(f'a_curr - _ASTART:{a_curr - _ASTART}')
@@ -533,7 +541,7 @@ def draw_play_screen( fb, char, lowbatt=False ):
     tick_txt( fb, str( hp[0] + hp[3] ), pt, 2 )
     
     # Finally draw the temp HP arc itself
-    drawThickArc( fb, _X, _Y, _ARC2_RO, _ARC2_RI, a_curr, a_tmax, 2 )
+    drawThickArc( fb, _X, _Y, _ARC2_RO, _ARC2_RI, a_curr, a_tmax, 2, scratchmem )
   
   else: # No temp HP, normal bar
     
@@ -544,8 +552,8 @@ def draw_play_screen( fb, char, lowbatt=False ):
     a_q4 = _AEND
     
     # Draw solid arc up to max HP
-    drawThickArc( fb, _X, _Y, _RO+1, _RI-1, _ASTART-spb-_APX, a_q4+_APX, 0 )
-    drawThickArc( fb, _X, _Y, _RO, _RI, _ASTART-spb, a_q4, 1 )
+    drawThickArc( fb, _X, _Y, _RO+1, _RI-1, _ASTART-spb-_APX, a_q4+_APX, 0, scratchmem )
+    drawThickArc( fb, _X, _Y, _RO, _RI, _ASTART-spb, a_q4, 1, scratchmem )
     
     # Ticks
     #tick( _ASTART, 1, 1)
