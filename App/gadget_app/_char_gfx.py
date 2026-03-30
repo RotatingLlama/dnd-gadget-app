@@ -227,12 +227,12 @@ def drawThickArc( fb, x, y, ro, ri, start, end, c=1, scratch=None ):
     psize = len(scratch)
   #
   if psize < bufsize:
-    print(f'drawThickArc(): Not enough scratch provided.  {bufsize} bytes allocated dynamically.')
+    print(f'drawThickArc(): Not enough scratch provided.  Allocating {bufsize} bytes dynamically.')
     scratch = FrameBuffer( bytearray(bufsize), width, height, MONO_HLSB )
   else:
-    print(f'drawThickArc(): Using provided scratch buffer of size {len(scratch)} ({bufsize} needed)')
+    print(f'drawThickArc(): Using {bufsize} bytes of provided {len(scratch)}-byte scratch buffer.')
     b_scratch = scratch
-    mv_scratch = memoryview(b_scratch) # Do this so we're definietly working with the correct buffer size
+    mv_scratch = memoryview(b_scratch) # Do this so we're definitely working with the correct buffer size
     scratch = FrameBuffer( mv_scratch[:bufsize], width, height, MONO_HLSB )
     scratch.fill(0) # Blank out the provided buffer
   
