@@ -1,7 +1,7 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 30 Mar 2026
+# 02 Apr 2026
 
 # Builtin libraries
 import os
@@ -369,6 +369,50 @@ class Character:
       d,
     ]
   
+  # Blindly overwrites f with the save data
+  # Return bool indicating success/failure
+  def _save_file(self, f ) -> bool:
+    s = self.data
+    sf = {
+      'version' : 0,
+      'name'    : s[_NAME],
+      'title'   : s[_TITLE],
+      'xp'      : s[_XP],
+      'copper'  : s[_CURRENCY][_CURRENCY_COPPER],
+      'silver'  : s[_CURRENCY][_CURRENCY_SILVER],
+      'electrum': s[_CURRENCY][_CURRENCY_ELECTRUM],
+      'gold'    : s[_CURRENCY][_CURRENCY_GOLD],
+      'platinum': s[_CURRENCY][_CURRENCY_PLATINUM],
+      'hp'      : dict(zip( ( 'current', 'max', 'temporary' ), s[_HP][:3] )),
+      'hitdice' : dict(zip( ('current','max'), s[_HD] )),
+      'spells'  : [
+        dict(zip( ('current','max'), sp )) for sp in 
+        zip( s[_SPELLS][_SPELLS_CURR], s[_SPELLS][_SPELLS_MAX] )
+      ],
+      'charges' : [ {
+        'name'    : c[_CHARGES_NAME],
+        'current' : c[_CHARGES_CURR],
+        'max'     : c[_CHARGES_MAX],
+        'reset'   : _rst_to_list( c[_CHARGES_RESET] ),
+        } for c in s[_CHARGES] ],
+      'death' : {
+        'status'    : _DEATH_STATUS_TUPLE[ s[_DEATH][_DEATH_STATUS] ],
+        'successes' :s[_DEATH][_DEATH_OK],
+        'failures'  :s[_DEATH][_DEATH_NG],
+      },
+    }
+    #print(sf)
+    
+    try:
+      with open( f, 'w') as fd:
+        # Micropython (1.26) doesn't support the indent argument for pretty printing
+        json.dump( sf, fd ) #, separators=(',\n', ': ') )
+        
+    except OSError:
+      return False
+    
+    return True
+  
   # Constructs the play screen and menus
   def activate(self):
     
@@ -482,49 +526,6 @@ class Character:
   
   def is_dirty(self):
     return self._dirty
-  
-  # Blindly overwrites f with the save data
-  # Return bool indicating success/failure
-  def _save_file(self, f ) -> bool:
-    s = self.data
-    sf = {
-      'name'    : s[_NAME],
-      'title'   : s[_TITLE],
-      'xp'      : s[_XP],
-      'copper'  : s[_CURRENCY][_CURRENCY_COPPER],
-      'silver'  : s[_CURRENCY][_CURRENCY_SILVER],
-      'electrum': s[_CURRENCY][_CURRENCY_ELECTRUM],
-      'gold'    : s[_CURRENCY][_CURRENCY_GOLD],
-      'platinum': s[_CURRENCY][_CURRENCY_PLATINUM],
-      'hp'      : dict(zip( ( 'current', 'max', 'temporary' ), s[_HP][:3] )),
-      'hitdice' : dict(zip( ('current','max'), s[_HD] )),
-      'spells'  : [
-        dict(zip( ('current','max'), sp )) for sp in 
-        zip( s[_SPELLS][_SPELLS_CURR], s[_SPELLS][_SPELLS_MAX] )
-      ],
-      'charges' : [ {
-        'name'    : c[_CHARGES_NAME],
-        'current' : c[_CHARGES_CURR],
-        'max'     : c[_CHARGES_MAX],
-        'reset'   : _rst_to_list( c[_CHARGES_RESET] ),
-        } for c in s[_CHARGES] ],
-      'death' : {
-        'status'    : _DEATH_STATUS_TUPLE[ s[_DEATH][_DEATH_STATUS] ],
-        'successes' :s[_DEATH][_DEATH_OK],
-        'failures'  :s[_DEATH][_DEATH_NG],
-      },
-    }
-    #print(sf)
-    
-    try:
-      with open( f, 'w') as fd:
-        # Micropython (1.26) doesn't support the indent argument for pretty printing
-        json.dump( sf, fd ) #, separators=(',\n', ': ') )
-        
-    except OSError:
-      return False
-    
-    return True
   
   # Save now, wherever we can, regardless of whether we need to
   def save_now(self) -> bool:
