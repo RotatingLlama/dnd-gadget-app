@@ -1,7 +1,7 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 02 Apr 2026
+# 03 Apr 2026
 
 # Builtin libraries
 import os
@@ -42,8 +42,8 @@ _MAX_CHARGE_LEVEL = const(_SIZE_MPY_SMALLINT) # (Python integer) The most charge
 _MAX_DEATH_SAVES = const(3) # (5e SRD) How many successes or failures can we have?
 
 # Indexes into the Character.data object
-_NAME = const(0)
-_TITLE = const(1)
+_NAME = const(0) # NO LONGER USED - replaced with Character.name
+_TITLE = const(1) # NO LONGER USED - replaced with Character.current_level
 _XP = const(2)
 _CURRENCY = const(3)
 _HP = const(4)
@@ -201,6 +201,59 @@ class Character:
     
     del uts, ts, f, fd
     gc_collect()
+    #print(fs)
+    
+    # Name
+    try:
+      name = str( fs.get('name') )[:_MAX_NAMELEN]
+    except ( ValueError, TypeError ) as e:
+      raise CharacterError('Invalid name')
+    if len(name) == 0:
+      raise CharacterError('No name given')
+    
+    # System
+    try:
+      system = str( fs.get('system','dnd-5e') )
+    except ( ValueError, TypeError ) as e:
+      raise CharacterError('Invalid/unsupported system')
+    
+    # NOTE:
+    # Version should only be used in the context of system.
+    # A change to the way eg. dnd-5e savefiles are laid out will drive a new version number
+    # But the version number is top-level and exists equally for savefiles for other systems
+    #
+    # So when (if) we implement alternative systems, we must split the code path after determining 'system'
+    # And only then look at 'version'
+    
+    # Version
+    try:
+      ver = int( fs.get('version',0) ) # TODO: Remove default
+    except ( ValueError, TypeError ) as e:
+      raise CharacterError('Invalid version')
+    if ver is None:
+      raise CharacterError('No version given')
+    loader = {
+      0 : self._load_0,
+      1 : self._load_1,
+    }.get(ver)
+    if loader is None:
+      raise CharacterError('Invalid version')
+    print('Savefile version:',ver)
+    
+    # Version 0 doesn't have a separate data section
+    # TODO: Remove this once all savefiles have been converted
+    if ver == 0:
+      loader( fs )
+      return
+    
+    # Get and process the data
+    data = fs.get('data')
+    if not type(data) is dict:
+      raise CharacterError('Invalid data section')
+    loader( data, name )
+  
+  # Set up self.data from v0 savefile
+  def _load_0(self, fs ):
     
     # Name
     try:
@@ -302,11 +355,11 @@ class Character:
     del spf
     
     # Get and validate charges
-    chf = fs.get( 'charges', [] )
-    if type(chf) is not list:
+    itf = fs.get( 'charges', [] )
+    if type(itf) is not list:
       raise CharacterError( 'Invalid charges list' )
-    ch = [None] * min( _MAX_CHARGE_ITEMS, len(chf) )
-    for i, c in enumerate( chf[:_MAX_CHARGE_ITEMS] ):
+    ch = [None] * min( _MAX_CHARGE_ITEMS, len(itf) )
+    for i, c in enumerate( itf[:_MAX_CHARGE_ITEMS] ):
       if type(c) is not dict:
         raise CharacterError( f'Bad charge #{i+1}' )
       try:
@@ -335,7 +388,7 @@ class Character:
         sum([ r.get( x, 0 ) for x in rstf ]), # Reset bitfield
         nm
       ]
-    del chf, r, rstf
+    del itf, r, rstf
     
     # Get and validate death
     df = fs.get( 'death', {} )
@@ -357,6 +410,9 @@ class Character:
     del df, di
     
     # Assemble
+    self.levels = {title:{}}
+    self.current_level = title
+    self.name = name
     self.data = [
       name,
       title,
@@ -369,39 +425,229 @@ class Character:
       d,
     ]
   
+  # Set up self.data from v1 savefile
+  def _load_1(self, data, name ):
+    
+    # XP
+    try:
+      xp = int( data.get('xp',0) )
+    except ( ValueError, TypeError ) as e:
+      raise CharacterError('Invalid XP')
+    if not 0 <= xp <= _MAX_XP:
+      raise CharacterError('Invalid XP')
+    
+    # Get and validate currency
+    gpf = data.get( 'currency', {} )
+    if not type(gpf) is dict:
+      raise CharacterError('Invalid currency section')
+    try:
+      gp = (
+        int( gpf.get('copper',0) ),
+        int( gpf.get('silver',0) ),
+        int( gpf.get('electrum',0) ),
+        int( gpf.get('gold',0) ),
+        int( gpf.get('platinum',0) ),
+      )
+    except ( ValueError, TypeError ) as e:
+      raise CharacterError('Invalid currency')
+    if not all([ 0 <= x <= _MAX_CURRENCY for x in gp ]):
+      raise CharacterError('Invalid currency value')
+    currency = array( 'H', gp ) # Unsigned short (2 bytes)
+    del gp, gpf
+    
+    # Get and validate death
+    df = data.get( 'death', {} )
+    if type(df) is not dict:
+      raise CharacterError( 'Invalid death section' )
+    di = { 'stable':_DEATH_STATUS_OK, 'saves':_DEATH_STATUS_SV, 'dead':_DEATH_STATUS_DD }
+    try:
+      d = bytearray([
+        di.get( df.get('status','stable'), _DEATH_STATUS_OK ),
+        int( df.get('successes',0) ),
+        int( df.get('failures',0) ),
+      ])
+    except ( ValueError, TypeError ) as e:
+      raise CharacterError( 'Invalid death section' )
+    if not 0<= d[ _DEATH_OK ] <= 3:
+      raise CharacterError( 'Invalid number of successful death saves' )
+    if not 0<= d[ _DEATH_NG ] <= 3:
+      raise CharacterError( 'Invalid number of failed death saves' )
+    del df, di
+    
+    # Level
+    # We don't alter the 'levels' object.  Keep as-is for re-saving later
+    # HOWEVER: If we change the format significantly, we'll need to do some conversion on these to keep everything consistent
+    cl = data.get('currentLevel')
+    levels = data.get('levels')
+    if not type(levels) is dict:
+      raise CharacterError('Invalid levels section')
+    if len(levels) == 0:
+      raise CharacterError('No levels defined')
+    if cl is None and len(levels) == 1: # If no currentLevel is defined, but the answer is obvious
+      cl = list( levels.keys() )[0]
+    lvl = levels.get(cl)
+    if lvl is None:
+      raise CharacterError('currentLevel does not match any level name')
+    if not type(lvl) is dict:
+      raise CharacterError('Invalid level data')
+    
+    # Get and validate HP
+    hpf = lvl.get( 'hp' )
+    if hpf is None:
+      raise CharacterError('Missing hp')
+    if type(hpf) is not dict:
+      raise CharacterError('Invalid hp')
+    try:
+      mx = int( hpf.get('max') )
+      cur = int( hpf.get('current',mx) )
+      temp = int( hpf.get('temporary',0) )
+    except ( ValueError, TypeError ) as e:
+      raise CharacterError('Invalid hp')
+    if not 0 <= cur <= mx <= _MAX_HP:
+      raise CharacterError('Invalid hp')
+    if not 0 <= temp <= _MAX_HP:
+      raise CharacterError('Invalid temporary hp')
+    hp = array('H', ( # Unsigned short (2 bytes)
+      cur,
+      mx,
+      temp,
+      temp,
+    ))
+    del hpf
+    
+    # Get and validate hit dice
+    hdf = lvl.get('hitdice')
+    if hdf is None:
+      raise CharacterError('Missing hitdice')
+    if type(hdf) is not dict:
+      raise CharacterError('Invalid hitdice')
+    try:
+      mx = int( hdf.get('max') )
+      cur = int( hdf.get('current',mx) )
+    except ( ValueError, TypeError ) as e:
+      raise CharacterError('Invalid hitdice')
+    if not 0 <= cur <= mx <= _MAX_HITDICE:
+      raise CharacterError('Invalid hitdice')
+    hd = bytearray(( cur, mx ))
+    del hdf
+    
+    # Get and validate spells
+    spf = lvl.get( 'spells', [] )
+    if type(spf) is not list:
+      raise CharacterError('Invalid spell slots list')
+    num_spells = min( _MAX_SPELL_LEVELS, len(spf) )
+    sp_curr = bytearray(num_spells)
+    sp_max = bytearray(num_spells)
+    for i in range(num_spells):
+      if type(spf[i]) is not dict:
+        raise CharacterError( f'Bad spell slot #{i+1}' )
+      try:
+        mx = int( spf[i].get('max') )
+        cur = int( spf[i].get( 'current', mx ) ) # Default to full if not specified
+      except ( ValueError, TypeError ) as e:
+        raise CharacterError( f'Bad spell slot #{i+1}' )
+      if not 0 <= cur <= mx <= _MAX_SPELLSLOTS:
+        raise CharacterError( f'Bad spell slot #{i+1}' )
+      sp_curr[i] = cur
+      sp_max[i] = mx
+    del spf
+    
+    # Get and validate items
+    itf = lvl.get( 'items', [] )
+    if type(itf) is not list:
+      raise CharacterError( 'Invalid items list' )
+    it = [None] * min( _MAX_CHARGE_ITEMS, len(itf) )
+    for i, c in enumerate( itf[:_MAX_CHARGE_ITEMS] ):
+      if type(c) is not dict:
+        raise CharacterError( f'Bad item #{i+1}' )
+      try:
+        nm = str( c.get('name') )[:_MAX_CHARGENAME_LEN]
+        mx = int( c.get('max',0) )
+        cur = int( c.get('current',mx) )
+      except ( ValueError, TypeError ) as e: # Invalid datatype
+        raise CharacterError( f'Bad item format #{i+1}' )
+      if not 0 <= mx <= _MAX_CHARGE_LEVEL: # Max level is ok?
+        raise CharacterError( f'Bad item max level #{i+1}' )
+      if not 0 <= cur <= _MAX_CHARGE_LEVEL: # Current level is ok?
+        raise CharacterError( f'Bad item current level #{i+1}' )
+      if mx and cur > mx: # Current is not more than max (if max is set)?
+        raise CharacterError( f'Bad item #{i+1}' )
+      rstf = c.get( 'reset', [] )
+      if type(rstf) is not list:
+        raise CharacterError( f'Item #{i+1} has invalid reset' )
+      r = {
+        'sr' : _CHARGE_RESET_SR,
+        'lr' : _CHARGE_RESET_LR,
+        'dawn' : _CHARGE_RESET_DAWN,
+      }
+      it[i] = [
+        cur,
+        mx,
+        sum([ r.get( x, 0 ) for x in rstf ]), # Reset bitfield
+        nm
+      ]
+    del itf, r, rstf
+    
+    # Assemble / assign
+    self.levels = levels # Unprocessed - this will get put back into the savefile as-is
+    self.current_level = cl
+    self.name = name
+    self.data = [
+      '', # Former 'name' slot
+      '', # Former 'title' slot
+      xp,
+      currency,
+      hp,
+      hd,
+      ( sp_curr, sp_max ),
+      it,
+      d,
+    ]
+  
   # Blindly overwrites f with the save data
   # Return bool indicating success/failure
   def _save_file(self, f ) -> bool:
     s = self.data
     sf = {
-      'version' : 0,
-      'name'    : s[_NAME],
-      'title'   : s[_TITLE],
-      'xp'      : s[_XP],
-      'copper'  : s[_CURRENCY][_CURRENCY_COPPER],
-      'silver'  : s[_CURRENCY][_CURRENCY_SILVER],
-      'electrum': s[_CURRENCY][_CURRENCY_ELECTRUM],
-      'gold'    : s[_CURRENCY][_CURRENCY_GOLD],
-      'platinum': s[_CURRENCY][_CURRENCY_PLATINUM],
+      'name'    : self.name,
+      'version' : 1,
+      'system' : 'dnd-5e',
+      'data'   : {
+        'xp'        : s[_XP],
+        'currency'  : {
+          'copper'  : s[_CURRENCY][_CURRENCY_COPPER],
+          'silver'  : s[_CURRENCY][_CURRENCY_SILVER],
+          'electrum': s[_CURRENCY][_CURRENCY_ELECTRUM],
+          'gold'    : s[_CURRENCY][_CURRENCY_GOLD],
+          'platinum': s[_CURRENCY][_CURRENCY_PLATINUM],
+        },
+        'death' : {
+          'status'    : _DEATH_STATUS_TUPLE[ s[_DEATH][_DEATH_STATUS] ],
+          'successes' :s[_DEATH][_DEATH_OK],
+          'failures'  :s[_DEATH][_DEATH_NG],
+        },
+        'currentLevel' : self.current_level,
+        'levels' : self.levels # Put back all the level data we originally loaded
+      }
+    }
+    
+    # Update the level we've been on with the current data
+    sf['data']['levels'][self.current_level] = {
       'hp'      : dict(zip( ( 'current', 'max', 'temporary' ), s[_HP][:3] )),
       'hitdice' : dict(zip( ('current','max'), s[_HD] )),
       'spells'  : [
         dict(zip( ('current','max'), sp )) for sp in 
         zip( s[_SPELLS][_SPELLS_CURR], s[_SPELLS][_SPELLS_MAX] )
       ],
-      'charges' : [ {
+      'items' : [ {
         'name'    : c[_CHARGES_NAME],
         'current' : c[_CHARGES_CURR],
         'max'     : c[_CHARGES_MAX],
         'reset'   : _rst_to_list( c[_CHARGES_RESET] ),
         } for c in s[_CHARGES] ],
-      'death' : {
-        'status'    : _DEATH_STATUS_TUPLE[ s[_DEATH][_DEATH_STATUS] ],
-        'successes' :s[_DEATH][_DEATH_OK],
-        'failures'  :s[_DEATH][_DEATH_NG],
-      },
     }
-    #print(sf)
+    
+    print(sf)
     
     try:
       with open( f, 'w') as fd:
@@ -569,9 +815,9 @@ class Character:
   
   # Simple convenience function getters
   def get_name(self) -> str:
-    return self.data[_NAME]
+    return self.name
   def get_title(self) -> str:
-    return self.data[_TITLE]
+    return self.current_level
   
   # DOES NOT VALIDATE hit dice
   def short_rest(self, hit_dice=0, show=True):

@@ -53,7 +53,7 @@ All of a character's information is stored in their `stats.json` file.
 - The file uses standard JSON format.
 - Supported fields are shown in the example below.
 - Spell slots are stored in order, starting from level 1.
-- `charges` are anything that has a given number of uses per time interval.  For example, a Druid may have 3 uses of Wildshape per short rest.  For each 'charge,' specify:
+- `items` are anything that has a given number of uses per time interval.  For example, a Druid may have 3 uses of Wildshape per short rest.  For each 'item,' specify:
   - Its name
   - How many charges/uses it currently has remaining
   - How many it has when it resets
@@ -62,34 +62,45 @@ All of a character's information is stored in their `stats.json` file.
     - It's valid to specify any number of these intervals, including none.
 ```
 {
-      "name": "Hemlock",
-      "title": "L5 Wizard",
-      "xp": 9256,
-      "copper": 0,
-      "silver": 0,
+  "name": "Hemlock",
+  "system": "dnd-5e",
+  "version": 1,
+  "data": {
+    "xp": 9256,
+    "currency": {
+      "platinum": 0,
       "gold": 11,
       "electrum": 0,
-      "hitdice": {
-            "current": 3,
-            "max": 5
-      },
-      "hp": {
-            "current": 29,
-            "max": 32,
-            "temporary": 10
-      },
-      "spells": [
-            {"current": 4, "max": 4},
-            {"current": 1, "max": 3},
-            {"current": 0, "max": 2}
-      ],
-      "charges": [
-            {"current": 1, "max": 1, "name": "Arcane Recovery", "reset": ["lr"]},
-            {"current": 3, "max": 3, "name": "Fey Step", "reset": ["lr"]},
-            {"current": 0, "max": 1, "name": "Cape of the Mountbank", "reset": ["lr","dawn"]},
-            {"current": 1, "max": 1, "name": "Dagger of Venom", "reset": ["lr","dawn"]},
-            {"current": 1, "max": 3, "name": "Rusty Bag of Tricks", "reset": ["lr","dawn"]}
-      ]
+      "silver": 0,
+      "copper": 0
+    },
+    "currentLevel": "L5 Wizard",
+    "levels": {
+      "L5 Wizard" : {
+        "hp": {
+          "current": 0,
+          "max": 512,
+          "temporary": 1740
+        },
+        "hitdice": {
+          "current": 5,
+          "max": 10
+        },
+        "spells": [
+          {"current": 4, "max": 4},
+          {"current": 1, "max": 3},
+          {"current": 0, "max": 2}
+        ],
+        "items": [
+          {"current": 1, "max": 1, "name": "Arcane Recovery", "reset": ["lr"]},
+          {"current": 3, "max": 3, "name": "Fey Step", "reset": ["lr"]},
+          {"current": 0, "max": 1, "name": "Cape of the Mountbank", "reset": ["lr","dawn"]},
+          {"current": 1, "max": 1, "name": "Dagger of Venom", "reset": ["lr","dawn"]},
+          {"current": 1, "max": 3, "name": "Rusty Bag of Tricks", "reset": ["lr","dawn"]}
+        ]
+      }
+    }
+  }
 }
 ```
 

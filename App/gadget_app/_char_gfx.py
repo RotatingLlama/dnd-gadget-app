@@ -1,7 +1,7 @@
 # Drawing functions for character.py
 #
 # T. Lloyd
-# 30 Mar 2026
+# 03 Apr 2026
 
 # Standard libraries
 from micropython import const
@@ -227,10 +227,10 @@ def drawThickArc( fb, x, y, ro, ri, start, end, c=1, scratch=None ):
     psize = len(scratch)
   #
   if psize < bufsize:
-    print(f'drawThickArc(): Not enough scratch provided.  Allocating {bufsize} bytes dynamically.')
+    #print(f'drawThickArc(): Not enough scratch provided.  Allocating {bufsize} bytes dynamically.')
     scratch = FrameBuffer( bytearray(bufsize), width, height, MONO_HLSB )
   else:
-    print(f'drawThickArc(): Using {bufsize} bytes of provided {len(scratch)}-byte scratch buffer.')
+    #print(f'drawThickArc(): Using {bufsize} bytes of provided {len(scratch)}-byte scratch buffer.')
     b_scratch = scratch
     mv_scratch = memoryview(b_scratch) # Do this so we're definitely working with the correct buffer size
     scratch = FrameBuffer( mv_scratch[:bufsize], width, height, MONO_HLSB )
@@ -462,9 +462,9 @@ def draw_play_screen( fb, char, lowbatt=False, scratchmem=None ):
   #f.write_to( fb, 'BONK', *XY, (1,) )
   #f = eink.Font('/assets/Vermin.2f')
   #f.write_to( fb, 'L3 Artificer', XY[0], XY[1]+14, (2,) )
-  fb.label( data[_NAME], _X - (chs2+(len(data[_NAME]) * 8)+5), _TIT_MIDPOINT_Y-4, 1 )
-  if len( data[_TITLE] ) > 0:
-    fb.label( data[_TITLE], _X + chs2 + 5, _TIT_MIDPOINT_Y-4, 1 )
+  fb.label( char.name, _X - (chs2+(len(char.name) * 8)+5), _TIT_MIDPOINT_Y-4, 1 )
+  if len( char.current_level ) > 0:
+    fb.label( char.current_level, _X + chs2 + 5, _TIT_MIDPOINT_Y-4, 1 )
   
   ######## SPELLS BAR ########
   

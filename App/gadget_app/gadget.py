@@ -2,7 +2,7 @@
 # For Micropython v1.26
 #
 # T. Lloyd
-# 30 Mar 2026
+# 03 Apr 2026
 
 
 # TO USE:
@@ -229,6 +229,7 @@ class Gadget:
     
     # Set the character
     self.character = self._chars[i]
+    print('Selected',self.character.get_name() )
     print( self.character.data )
     
     # Blank out chars object
