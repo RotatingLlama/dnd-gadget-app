@@ -36,9 +36,9 @@ _MAX_HP = const(_SIZE_UINT16) # (array H) Highest value for hit points
 _MAX_TEMPHP = const(_SIZE_UINT16) # (array H) Highest value for hit points
 _MAX_SPELL_LEVELS = const(9) # 5e SRD
 _MAX_SPELLSLOTS = const(6) # (MatrixMenu display limitation) Max number of spell slots at each level
-_MAX_CHARGE_ITEMS = const(16) # (MatrixMenu display limitation) When loading from file, load no more than this many of each item
-_MAX_CHARGENAME_LEN = const(45) # The most characters that will fit on the eink: 360/8
-_MAX_CHARGE_LEVEL = const(_SIZE_MPY_SMALLINT) # (Python integer) The most charges an item can have
+_MAX_N_ITEMS = const(16) # (MatrixMenu display limitation) When loading from file, load no more than this many of each item
+_MAX_ITEMNAME_LEN = const(45) # The most characters that will fit on the eink: 360/8
+_MAX_ITEM_LEVEL = const(_SIZE_MPY_SMALLINT) # (Python integer) The most charges an item can have
 _MAX_DEATH_SAVES = const(3) # (5e SRD) How many successes or failures can we have?
 
 # Indexes into the Character.data object
@@ -49,7 +49,7 @@ _CURRENCY = const(3)
 _HP = const(4)
 _HD = const(5)
 _SPELLS = const(6)
-_CHARGES = const(7)
+_ITEMS = const(7)
 _DEATH = const(8)
 #
 _CURRENCY_COPPER = const(0)
@@ -69,24 +69,31 @@ _HD_MAX = const(1)
 _SPELLS_CURR = const(0)
 _SPELLS_MAX = const(1)
 #
-_CHARGES_CURR = const(0)
-_CHARGES_MAX = const(1)
-_CHARGES_RESET = const(2)
-_CHARGES_NAME = const(3)
+_ITEMS_CURR = const(0)
+_ITEMS_MAX = const(1)
+_ITEMS_RESET = const(2)
+_ITEMS_NAME = const(3)
 #
 _DEATH_STATUS = const(0)
 _DEATH_OK = const(1)
 _DEATH_NG = const(2)
 
 # Codes for Character.data objects
-_CHARGE_RESET_SR = const(0x01)
-_CHARGE_RESET_LR = const(0x02)
-_CHARGE_RESET_DAWN = const(0x04)
+_ITEM_RESET_SR = const(0x01)
+_ITEM_RESET_LR = const(0x02)
+_ITEM_RESET_DAWN = const(0x04)
 #
 _DEATH_STATUS_OK = const(0)
 _DEATH_STATUS_SV = const(1)
 _DEATH_STATUS_DD = const(2)
 _DEATH_STATUS_TUPLE = ('stable','saves','dead')
+
+# Index into the Levels objects
+# ( hp, hd, spells, items )
+_LV_HP = const(0)
+_LV_HD = const(1)
+_LV_SPELLS = const(2)
+_LV_ITEMS = const(3)
 
 # Exists so that a consistent error type can be passed from the Character object
 class CharacterError( RuntimeError ):
@@ -115,7 +122,7 @@ def try_sync() -> bool:
 # Converts charge's reset bitarray to a string tuple
 def _rst_to_list(bf:int) -> list:
   # Strings appear in savefiles.
-  # Order corresponds to _CHARGE_RESET_SR, _CHARGE_RESET_LR etc.
+  # Order corresponds to _ITEM_RESET_SR, _ITEM_RESET_LR etc.
   a = ( 'sr', 'lr', 'dawn' )
   b = []
   i = 0
@@ -234,7 +241,7 @@ class Character:
       raise CharacterError('No version given')
     loader = {
       0 : self._load_0,
-      1 : self._load_1,
+      1 : self._load_v1,
     }.get(ver)
     if loader is None:
       raise CharacterError('Invalid version')
@@ -358,19 +365,19 @@ class Character:
     itf = fs.get( 'charges', [] )
     if type(itf) is not list:
       raise CharacterError( 'Invalid charges list' )
-    ch = [None] * min( _MAX_CHARGE_ITEMS, len(itf) )
-    for i, c in enumerate( itf[:_MAX_CHARGE_ITEMS] ):
+    ch = [None] * min( _MAX_N_ITEMS, len(itf) )
+    for i, c in enumerate( itf[:_MAX_N_ITEMS] ):
       if type(c) is not dict:
         raise CharacterError( f'Bad charge #{i+1}' )
       try:
-        nm = str( c.get('name') )[:_MAX_CHARGENAME_LEN]
+        nm = str( c.get('name') )[:_MAX_ITEMNAME_LEN]
         mx = int( c.get('max',0) )
         cur = int( c.get('current',mx) )
       except ( ValueError, TypeError ) as e: # Invalid datatype
         raise CharacterError( f'Bad charge format #{i+1}' )
-      if not 0 <= mx <= _MAX_CHARGE_LEVEL: # Max level is ok?
+      if not 0 <= mx <= _MAX_ITEM_LEVEL: # Max level is ok?
         raise CharacterError( f'Bad charge max level #{i+1}' )
-      if not 0 <= cur <= _MAX_CHARGE_LEVEL: # Current level is ok?
+      if not 0 <= cur <= _MAX_ITEM_LEVEL: # Current level is ok?
         raise CharacterError( f'Bad charge current level #{i+1}' )
       if mx and cur > mx: # Current is not more than max (if max is set)?
         raise CharacterError( f'Bad charge #{i+1}' )
@@ -378,9 +385,9 @@ class Character:
       if type(rstf) is not list:
         raise CharacterError( f'Charge #{i+1} has invalid reset' )
       r = {
-        'sr' : _CHARGE_RESET_SR,
-        'lr' : _CHARGE_RESET_LR,
-        'dawn' : _CHARGE_RESET_DAWN,
+        'sr' : _ITEM_RESET_SR,
+        'lr' : _ITEM_RESET_LR,
+        'dawn' : _ITEM_RESET_DAWN,
       }
       ch[i] = [
         cur,
@@ -410,7 +417,7 @@ class Character:
     del df, di
     
     # Assemble
-    self.levels = {title:{}}
+    self.levels = {title:(hp, hd, ( sp_curr, sp_max ), ch)}
     self.current_level = title
     self.name = name
     self.data = [
@@ -426,7 +433,7 @@ class Character:
     ]
   
   # Set up self.data from v1 savefile
-  def _load_1(self, data, name ):
+  def _load_v1(self, data, name ):
     
     # XP
     try:
@@ -478,16 +485,39 @@ class Character:
     # We don't alter the 'levels' object.  Keep as-is for re-saving later
     # HOWEVER: If we change the format significantly, we'll need to do some conversion on these to keep everything consistent
     cl = data.get('currentLevel')
-    levels = data.get('levels')
-    if not type(levels) is dict:
+    lvf = data.get('levels')
+    if not type(lvf) is dict:
       raise CharacterError('Invalid levels section')
-    if len(levels) == 0:
+    if len(lvf) == 0:
       raise CharacterError('No levels defined')
-    if cl is None and len(levels) == 1: # If no currentLevel is defined, but the answer is obvious
-      cl = list( levels.keys() )[0]
-    lvl = levels.get(cl)
-    if lvl is None:
+    if cl is None and len(lvf) == 1: # If no currentLevel is defined, but the answer is obvious
+      cl = list( lvf.keys() )[0]
+    levels = { x : self._load_level_v1( lvf[x] ) for x in lvf }
+    lv = levels.get(cl)
+    if lv is None:
       raise CharacterError('currentLevel does not match any level name')
+    
+    # Assemble / assign
+    self.levels = levels
+    self.current_level = cl
+    self.name = name
+    self.data = [
+      '', # Former 'name' slot
+      '', # Former 'title' slot
+      xp,
+      currency,
+      lv[_LV_HP], # MP 1.26 doesn't fully support PEP 448 (Additional Unpacking Generalizations)
+      lv[_LV_HD],
+      lv[_LV_SPELLS],
+      lv[_LV_ITEMS],
+      d,
+    ]
+  
+  # Load and validate a level section from a v1 savefile
+  # Returns the level-tuple ( hp, hd, spells, items )
+  def _load_level_v1(self, lvl ) -> tuple[ array, bytearray, tuple[bytearray,bytearray], list ]:
+    
+    # Validate level object itself
     if not type(lvl) is dict:
       raise CharacterError('Invalid level data')
     
@@ -556,19 +586,19 @@ class Character:
     itf = lvl.get( 'items', [] )
     if type(itf) is not list:
       raise CharacterError( 'Invalid items list' )
-    it = [None] * min( _MAX_CHARGE_ITEMS, len(itf) )
-    for i, c in enumerate( itf[:_MAX_CHARGE_ITEMS] ):
+    it = [None] * min( _MAX_N_ITEMS, len(itf) )
+    for i, c in enumerate( itf[:_MAX_N_ITEMS] ):
       if type(c) is not dict:
         raise CharacterError( f'Bad item #{i+1}' )
       try:
-        nm = str( c.get('name') )[:_MAX_CHARGENAME_LEN]
+        nm = str( c.get('name') )[:_MAX_ITEMNAME_LEN]
         mx = int( c.get('max',0) )
         cur = int( c.get('current',mx) )
       except ( ValueError, TypeError ) as e: # Invalid datatype
         raise CharacterError( f'Bad item format #{i+1}' )
-      if not 0 <= mx <= _MAX_CHARGE_LEVEL: # Max level is ok?
+      if not 0 <= mx <= _MAX_ITEM_LEVEL: # Max level is ok?
         raise CharacterError( f'Bad item max level #{i+1}' )
-      if not 0 <= cur <= _MAX_CHARGE_LEVEL: # Current level is ok?
+      if not 0 <= cur <= _MAX_ITEM_LEVEL: # Current level is ok?
         raise CharacterError( f'Bad item current level #{i+1}' )
       if mx and cur > mx: # Current is not more than max (if max is set)?
         raise CharacterError( f'Bad item #{i+1}' )
@@ -576,9 +606,9 @@ class Character:
       if type(rstf) is not list:
         raise CharacterError( f'Item #{i+1} has invalid reset' )
       r = {
-        'sr' : _CHARGE_RESET_SR,
-        'lr' : _CHARGE_RESET_LR,
-        'dawn' : _CHARGE_RESET_DAWN,
+        'sr' : _ITEM_RESET_SR,
+        'lr' : _ITEM_RESET_LR,
+        'dawn' : _ITEM_RESET_DAWN,
       }
       it[i] = [
         cur,
@@ -588,26 +618,28 @@ class Character:
       ]
     del itf, r, rstf
     
-    # Assemble / assign
-    self.levels = levels # Unprocessed - this will get put back into the savefile as-is
-    self.current_level = cl
-    self.name = name
-    self.data = [
-      '', # Former 'name' slot
-      '', # Former 'title' slot
-      xp,
-      currency,
+    # Assemble and return
+    return (
       hp,
       hd,
       ( sp_curr, sp_max ),
       it,
-      d,
-    ]
+    )
+  
+  # Extract the level-tuple from the current play data
+  def _get_level_data(self) -> tuple[ array, bytearray, tuple[bytearray,bytearray], list ]:
+    d = self.data
+    return ( d[_HP], d[_HD], d[_SPELLS], d[_ITEMS] )
   
   # Blindly overwrites f with the save data
   # Return bool indicating success/failure
   def _save_file(self, f ) -> bool:
     s = self.data
+    lvs = self.levels
+    
+    # Update the current level with the play data
+    lvs[self.current_level] = self._get_level_data()
+    
     sf = {
       'name'    : self.name,
       'version' : 1,
@@ -627,24 +659,24 @@ class Character:
           'failures'  :s[_DEATH][_DEATH_NG],
         },
         'currentLevel' : self.current_level,
-        'levels' : self.levels # Put back all the level data we originally loaded
+        'levels' : {
+          lv : {
+            'hp'      : dict(zip( ( 'current', 'max', 'temporary' ), lvs[lv][_LV_HP][:3] )),
+            'hitdice' : dict(zip( ('current','max'), lvs[lv][_LV_HD] )),
+            'spells'  : [
+              dict(zip( ('current','max'), sp )) for sp in 
+              zip( lvs[lv][2][_SPELLS_CURR], lvs[lv][_LV_SPELLS][_SPELLS_MAX] )
+            ],
+            'items' : [ {
+              'name'    : it[_ITEMS_NAME],
+              'current' : it[_ITEMS_CURR],
+              'max'     : it[_ITEMS_MAX],
+              'reset'   : _rst_to_list( it[_ITEMS_RESET] ),
+              } for it in lvs[lv][_LV_ITEMS] ],
+          }
+          for lv in lvs
+        }
       }
-    }
-    
-    # Update the level we've been on with the current data
-    sf['data']['levels'][self.current_level] = {
-      'hp'      : dict(zip( ( 'current', 'max', 'temporary' ), s[_HP][:3] )),
-      'hitdice' : dict(zip( ('current','max'), s[_HD] )),
-      'spells'  : [
-        dict(zip( ('current','max'), sp )) for sp in 
-        zip( s[_SPELLS][_SPELLS_CURR], s[_SPELLS][_SPELLS_MAX] )
-      ],
-      'items' : [ {
-        'name'    : c[_CHARGES_NAME],
-        'current' : c[_CHARGES_CURR],
-        'max'     : c[_CHARGES_MAX],
-        'reset'   : _rst_to_list( c[_CHARGES_RESET] ),
-        } for c in s[_CHARGES] ],
     }
     
     print(sf)
@@ -658,6 +690,56 @@ class Character:
       return False
     
     return True
+  
+  def switch_level(self, levelname, show=True ):
+    
+    # old data = capture level fropm current data
+    oldlev = self._get_level_data()
+    
+    # new data = load new level
+    # Deliberately don't use get() so that exception is raised if bad name is passed
+    newlev = self.levels[levelname]
+    
+    print('curr', oldlev )
+    print('new', newlev )
+    
+    # copy all 'current' values from old to new ( hp, hd, spells, items )
+    
+    # Transfer HP
+    newlev[_LV_HP][_HP_CURR] = oldlev[_LV_HP][_HP_CURR]
+    
+    # Transfer HD
+    newlev[_LV_HD][_HD_CURR] = oldlev[_LV_HD][_HD_CURR]
+    
+    # Transfer spells
+    for i in range(min( len(newlev[_LV_SPELLS][_SPELLS_CURR]), len(oldlev[_LV_SPELLS][_SPELLS_CURR]) )):
+      newlev[_LV_SPELLS][_SPELLS_CURR][i] = oldlev[_LV_SPELLS][_SPELLS_CURR][i]
+    
+    # Transfer items
+    # Make dict of old item current values, indexed by item name
+    old_items = { it[_ITEMS_NAME] : it[_ITEMS_CURR] for it in oldlev[_LV_ITEMS] }
+    for it in newlev[_LV_ITEMS]:
+      # Assign old current value to new item if name found, otherwise keep new current value
+      it[_ITEMS_CURR] = old_items.get( it[_ITEMS_NAME], it[_ITEMS_CURR] )
+    
+    print('merged', newlev )
+    print('TESTING: NOT IMPLEMENTED')
+    return
+    
+    # new data into self.data
+    self.data[_HP] = newlev[_LV_HP]
+    self.data[_HD] = newlev[_LV_HD]
+    self.data[_SPELLS] = newlev[_LV_SPELLS]
+    self.data[_ITEMS] = newlev[_LV_ITEMS]
+    
+    # change self.current_level
+    self.current_level = levelname
+    
+    # long rest
+    self.long_rest(show=False)
+    
+    # Recreate the UI
+    self._playscreen(show=show)
   
   # Constructs the play screen and menus
   def activate(self):
@@ -701,7 +783,6 @@ class Character:
     
     # Localise
     hal = self.hal
-    #ds = self.stats['death'][_DEATH_STATUS]
     ds = self.data[_DEATH][_DEATH_STATUS]
     
     # Eink and needle
@@ -770,7 +851,8 @@ class Character:
       self.hal.unregister( self._mtx_idle )
       self._mtx_idle = None
   
-  def is_dirty(self):
+  # Returns a bool indicating whether unsaved changes exist
+  def is_dirty(self) -> bool:
     return self._dirty
   
   # Save now, wherever we can, regardless of whether we need to
@@ -809,6 +891,7 @@ class Character:
     print('Saved.')
     return True
   
+  # Sets the 'dirty' flag and triggers a save to happen in the near future
   def save(self):
     self._saver.touch()
     self._dirty = True
@@ -832,15 +915,15 @@ class Character:
     # Option to do spell slots here?
     
     # Reset all short-rest charges to max
-    for c in st[_CHARGES]:
+    for c in st[_ITEMS]:
       
       # Zero-max means no maximum.  Don't reset.
-      if c[_CHARGES_MAX] == 0:
+      if c[_ITEMS_MAX] == 0:
         continue
       
       # If it resets on a short rest, reset it
-      if c[_CHARGES_RESET] & _CHARGE_RESET_SR:
-        c[_CHARGES_CURR] = c[_CHARGES_MAX]
+      if c[_ITEMS_RESET] & _ITEM_RESET_SR:
+        c[_ITEMS_CURR] = c[_ITEMS_MAX]
     
     self.save()
     
@@ -856,7 +939,7 @@ class Character:
     st = self.data
     h = st[_HP]
     sps = st[_SPELLS]
-    cgs = st[_CHARGES]
+    cgs = st[_ITEMS]
     
     # Will we need to update the eink after this?
     e:bool = ( h[_HP_TEMP] != 0 ) # If we had temp hp, they're being reset and we need to update
@@ -877,8 +960,8 @@ class Character:
     
     # Reset all long-rest charges to max
     for c in cgs:
-      if c[_CHARGES_MAX] and c[_CHARGES_RESET] & _CHARGE_RESET_LR:
-        c[_CHARGES_CURR] = c[_CHARGES_MAX]
+      if c[_ITEMS_MAX] and c[_ITEMS_RESET] & _ITEM_RESET_LR:
+        c[_ITEMS_CURR] = c[_ITEMS_MAX]
     
     self.save()
     
@@ -892,9 +975,9 @@ class Character:
   
   def dawn_reset(self, show=True):
     
-    for c in self.data[_CHARGES]:
-      if c[_CHARGES_MAX] and c[_CHARGES_RESET] & _CHARGE_RESET_DAWN:
-        c[_CHARGES_CURR] = c[_CHARGES_MAX]
+    for c in self.data[_ITEMS]:
+      if c[_ITEMS_MAX] and c[_ITEMS_RESET] & _ITEM_RESET_DAWN:
+        c[_ITEMS_CURR] = c[_ITEMS_MAX]
     
     self.save()
     
@@ -1188,14 +1271,14 @@ class Character:
     assert val >= 0
     
     # Get the charge object
-    c = self.data[_CHARGES][chg]
+    c = self.data[_ITEMS][chg]
     
     # Is there a max level for _this_ charge, and does the new val violate it?
-    if c[_CHARGES_MAX] and not 0 <= val <= c[_CHARGES_MAX]:
+    if c[_ITEMS_MAX] and not 0 <= val <= c[_ITEMS_MAX]:
       return
     
     # Silently clamp to (max level for _any_ charge)
-    c[_CHARGES_CURR] = min( val, _MAX_CHARGE_LEVEL )
+    c[_ITEMS_CURR] = min( val, _MAX_ITEM_LEVEL )
     
     self.save()
     self.draw_mtx_stable(show=show)
@@ -1240,8 +1323,8 @@ class Character:
     mtx.clear()
     
     # Go through all charges to update the matrix fb
-    for i,c in enumerate(data[_CHARGES]):
-      mtx.bitmap[i] = num2mtx( c[_CHARGES_CURR] )
+    for i,c in enumerate(data[_ITEMS]):
+      mtx.bitmap[i] = num2mtx( c[_ITEMS_CURR] )
     
     # Go through all spell slots to update the matrix fb
     for i,s in enumerate(data[_SPELLS][_SPELLS_CURR]):

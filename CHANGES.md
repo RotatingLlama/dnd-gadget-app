@@ -1,5 +1,6 @@
 TODO
 ====
+- Move char.levels into char.data.  Add level switcher to oled menu.  Testy testy
 * Should be able to get temp hp (and take damage) during death saves.  temp hp buffer against damage, but don't stabilise.
 - _char_gfx.py:
   - Make draw_play_screen() give drawThickArc() a scratch buffer

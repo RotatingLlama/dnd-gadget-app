@@ -84,8 +84,8 @@ _SPL_C  = const(1)
 
 
 # Indexes into the Character.data object
-_NAME = const(0)
-_TITLE = const(1)
+#_NAME = const(0)
+#_TITLE = const(1)
 #_XP = const(2)
 #_CURRENCY = const(3)
 _HP = const(4)
