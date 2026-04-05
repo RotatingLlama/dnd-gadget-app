@@ -1,7 +1,7 @@
 # Drawing functions for character.py
 #
 # T. Lloyd
-# 03 Apr 2026
+# 05 Apr 2026
 
 # Standard libraries
 from micropython import const
@@ -463,8 +463,8 @@ def draw_play_screen( fb, char, lowbatt=False, scratchmem=None ):
   #f = eink.Font('/assets/Vermin.2f')
   #f.write_to( fb, 'L3 Artificer', XY[0], XY[1]+14, (2,) )
   fb.label( char.name, _X - (chs2+(len(char.name) * 8)+5), _TIT_MIDPOINT_Y-4, 1 )
-  if len( char.current_level ) > 0:
-    fb.label( char.current_level, _X + chs2 + 5, _TIT_MIDPOINT_Y-4, 1 )
+  if len( char.get_title() ) > 0:
+    fb.label( char.get_title(), _X + chs2 + 5, _TIT_MIDPOINT_Y-4, 1 )
   
   ######## SPELLS BAR ########
   

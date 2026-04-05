@@ -43,7 +43,7 @@ _MAX_DEATH_SAVES = const(3) # (5e SRD) How many successes or failures can we hav
 
 # Indexes into the Character.data object
 #_NAME = const(0) # NO LONGER USED - replaced with Character.name
-#_TITLE = const(1) # NO LONGER USED - replaced with Character.current_level
+_LVNAME = const(1)
 _XP = const(2)
 _CURRENCY = const(3)
 _HP = const(4)
@@ -89,11 +89,12 @@ _DEATH_STATUS_DD = const(2)
 _DEATH_STATUS_TUPLE = ('stable','saves','dead')
 
 # Index into the Levels tuples
-# ( hp, hd, spells, items )
-_LV_HP = const(0)
-_LV_HD = const(1)
-_LV_SPELLS = const(2)
-_LV_ITEMS = const(3)
+# ( name, hp, hd, spells, items )
+_LV_NAME = const(0)
+_LV_HP = const(1)
+_LV_HD = const(2)
+_LV_SPELLS = const(3)
+_LV_ITEMS = const(4)
 
 # Exists so that a consistent error type can be passed from the Character object
 class CharacterError( RuntimeError ):
@@ -417,8 +418,8 @@ class Character:
     del df, di
     
     # Assemble
-    self.levels = {title:(hp, hd, ( sp_curr, sp_max ), ch)}
-    self.current_level = title
+    self.levels = [(title, hp, hd, ( sp_curr, sp_max ), ch)]
+    self.current_level = 0
     self.name = name
     self.data = [
       name,
@@ -482,29 +483,35 @@ class Character:
     del df, di
     
     # Level
-    cl = data.get('currentLevel')
+    clname = data.get('currentLevel') # A string matching a level name
     lvf = data.get('levels')
-    if not type(lvf) is dict:
+    if not type(lvf) is list:
       raise CharacterError('Invalid levels section')
     if len(lvf) == 0:
       raise CharacterError('No levels defined')
-    if cl is None and len(lvf) == 1: # If no currentLevel is defined, but the answer is obvious
-      cl = list( lvf.keys() )[0]
-    levels = { x : self._load_level_v1( lvf[x] ) for x in lvf }
-    lv = levels.get(cl)
-    if lv is None:
+    levels = [ self._load_level_v1(x) for x in lvf ]
+    lvi = None
+    if clname is None and len(levels) == 1: # If no currentLevel is defined, but the answer is obvious
+      lvi = 0
+    else:
+      for i in range(len(levels)):
+        if levels[i][_LV_NAME] == clname:
+          lvi = i
+          break
+    if lvi is None:
       raise CharacterError('currentLevel does not match any level name')
+    lv = levels[lvi]
     
     # Assemble / assign
     self.levels = levels
-    self.current_level = cl
+    self.current_level = lvi
     self.name = name
     self.data = [
       '', # Former 'name' slot
-      '', # Former 'title' slot
+      lv[_LV_NAME], # MP 1.26 doesn't fully support PEP 448 (Additional Unpacking Generalizations)
       xp,
       currency,
-      lv[_LV_HP], # MP 1.26 doesn't fully support PEP 448 (Additional Unpacking Generalizations)
+      lv[_LV_HP],
       lv[_LV_HD],
       lv[_LV_SPELLS],
       lv[_LV_ITEMS],
@@ -512,12 +519,21 @@ class Character:
     ]
   
   # Load and validate a level section from a v1 savefile
-  # Returns the level-tuple ( hp, hd, spells, items )
-  def _load_level_v1(self, lvl ) -> tuple[ array, bytearray, tuple[bytearray,bytearray], list ]:
+  # Returns the level-tuple ( name, hp, hd, spells, items )
+  def _load_level_v1(self, lvl ) -> tuple[ str, array, bytearray, tuple[bytearray,bytearray], list ]:
     
     # Validate level object itself
     if not type(lvl) is dict:
       raise CharacterError('Invalid level data')
+    
+    # Get name
+    name = lvl.get('name')
+    if name is None:
+      raise CharacterError('No level name given')
+    try:
+      name = str(name)[:_MAX_TITLELEN]
+    except ( ValueError, TypeError ) as e:
+      raise CharacterError('Invalid level name')
     
     # Get and validate HP
     hpf = lvl.get( 'hp' )
@@ -618,16 +634,17 @@ class Character:
     
     # Assemble and return
     return (
+      name,
       hp,
       hd,
       ( sp_curr, sp_max ),
       it,
     )
   
-  # Extract the level-tuple from the current play data
-  def _get_level_data(self) -> tuple[ array, bytearray, tuple[bytearray,bytearray], list ]:
+  # Extract the level-tuple from the current play data ( name, hp, hd, spells, items )
+  def _get_level_data(self) -> tuple[ str, array, bytearray, tuple[bytearray,bytearray], list ]:
     d = self.data
-    return ( d[_HP], d[_HD], d[_SPELLS], d[_ITEMS] )
+    return ( d[_LVNAME], d[_HP], d[_HD], d[_SPELLS], d[_ITEMS] )
   
   # Blindly overwrites f with the save data
   # Return bool indicating success/failure
@@ -656,24 +673,25 @@ class Character:
           'successes' :s[_DEATH][_DEATH_OK],
           'failures'  :s[_DEATH][_DEATH_NG],
         },
-        'currentLevel' : self.current_level,
-        'levels' : {
-          lv : {
-            'hp'      : dict(zip( ( 'current', 'max', 'temporary' ), lvs[lv][_LV_HP][:3] )),
-            'hitdice' : dict(zip( ('current','max'), lvs[lv][_LV_HD] )),
+        'currentLevel' : s[_LVNAME],
+        'levels' : [
+          {
+            'name'    : lv[_LV_NAME],
+            'hp'      : dict(zip( ( 'current', 'max', 'temporary' ), lv[_LV_HP][:3] )),
+            'hitdice' : dict(zip( ('current','max'), lv[_LV_HD] )),
             'spells'  : [
               dict(zip( ('current','max'), sp )) for sp in 
-              zip( lvs[lv][2][_SPELLS_CURR], lvs[lv][_LV_SPELLS][_SPELLS_MAX] )
+              zip( lv[_LV_SPELLS][_SPELLS_CURR], lv[_LV_SPELLS][_SPELLS_MAX] )
             ],
             'items' : [ {
               'name'    : it[_ITEMS_NAME],
               'current' : it[_ITEMS_CURR],
               'max'     : it[_ITEMS_MAX],
               'reset'   : _rst_to_list( it[_ITEMS_RESET] ),
-              } for it in lvs[lv][_LV_ITEMS] ],
+              } for it in lv[_LV_ITEMS] ],
           }
           for lv in lvs
-        }
+        ]
       }
     }
     
@@ -689,19 +707,24 @@ class Character:
     
     return True
   
-  def switch_level(self, levelname, show=True ):
+  def switch_level(self, level:int, show=True ):
+    
+    # Can't switch to this level
+    if level == self.current_level:
+      return
     
     # old data = capture level fropm current data
     oldlev = self._get_level_data()
     
     # new data = load new level
     # Deliberately don't use get() so that exception is raised if bad name is passed
-    newlev = self.levels[levelname]
+    newlev = self.levels[level]
     
+    print(f'SWITCHING {self.data[_LVNAME]} => {newlev[_LV_NAME]}')
     print('curr', oldlev )
     print('new', newlev )
     
-    # copy all 'current' values from old to new ( hp, hd, spells, items )
+    # copy all 'current' values from old to new ( name, hp, hd, spells, items )
     
     # Transfer HP
     if newlev[_LV_HP][_HP_MAX] >= oldlev[_LV_HP][_HP_MAX]:
@@ -745,8 +768,8 @@ class Character:
           
     
     print('merged', newlev )
-    print('TESTING: NOT IMPLEMENTED')
-    return
+    #print('TESTING: NOT IMPLEMENTED')
+    #return
     
     # new data into self.data
     self.data[_HP] = newlev[_LV_HP]
@@ -755,7 +778,7 @@ class Character:
     self.data[_ITEMS] = newlev[_LV_ITEMS]
     
     # change self.current_level
-    self.current_level = levelname
+    self.current_level = level
     
     # long rest
     self.long_rest(show=False)
@@ -922,7 +945,7 @@ class Character:
   def get_name(self) -> str:
     return self.name
   def get_title(self) -> str:
-    return self.current_level
+    return self.data[_LVNAME]
   
   # DOES NOT VALIDATE hit dice
   def short_rest(self, hit_dice=0, show=True):

@@ -1,12 +1,10 @@
 TODO
 ====
 * Levels
-  - Add level switcher to oled menu.
+  - BUGS REMAIN
+  - Add level switcher to oled menu. - done
   - What happens when max reduces - done, test this
-  - What about order of levels
-    - Change sf levels format to a list, have the name as a string within the object
-    - Keep as a list everywhere.  Add level name to tuple.
-    - Affects everything that has the _LV constants.  Anything else?
+  - item names no longer show on eink
   - What about items with same name - done, test this
   - Testy testy
 * Should be able to get temp hp (and take damage) during death saves.  temp hp buffer against damage, but don't stabilise.

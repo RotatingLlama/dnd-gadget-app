@@ -2,7 +2,7 @@
 # Consider as part of character.py
 #
 # T. Lloyd
-# 28 Mar 2026
+# 05 Apr 2026
 
 from micropython import const
 
@@ -52,6 +52,14 @@ _DEATH_NG = const(2)
 _DEATH_STATUS_OK = const(0)
 _DEATH_STATUS_SV = const(1)
 _DEATH_STATUS_DD = const(2)
+
+# Index into the Levels tuples
+# ( name, hp, hd, spells, items )
+_LV_NAME = const(0)
+_LV_HP = const(1)
+_LV_HD = const(2)
+_LV_SPELLS = const(3)
+_LV_ITEMS = const(4)
 
 
 def make_matrix_menu_stable( hal, char ) -> menu.MatrixMenu:
@@ -165,22 +173,15 @@ def make_oled_menu( hal, char, parent ) -> menu.ScrollingOledMenu:
     # Resurrection menu
     omi.append( _submenu_resurrection( hal, char, om ) )
   
-  # Money submenu - always available
-  omi.append( _submenu_money( hal, char, om ) )
-  
   # Rest/reset submenu - only appplies when stable
   if death[_DEATH_STATUS] == _DEATH_STATUS_OK:
     omi.append( _submenu_rest_reset( hal, char, om ) )
   
-  # XP is its own thing - always available
-  omi.append(
-    menu.SimpleAdjuster( om, hal,
-      prio=HAL_PRIORITY_MENU+2,
-      title='XP',
-      get_cur=lambda: char.data[_XP],
-      set_abs=char.set_xp
-    )
-  )
+  # Character submenu
+  omi.append( _submenu_char( hal, char, om ) )
+  
+  # Money submenu - always available
+  omi.append( _submenu_money( hal, char, om ) )
   
   return om
 
@@ -343,6 +344,53 @@ def _submenu_money( hal, char, parent ) -> menu.SubMenu:
       set_abs=lambda x : char.set_currency( _CURRENCY_ELECTRUM, x )
     )
   )
+  
+  return submenu
+
+
+def _submenu_char( hal, char, parent ) -> menu.SubMenu:
+  
+  submenu = menu.SubMenu( parent, hal,
+    prio=HAL_PRIORITY_MENU+2,
+    title=char.name
+  )
+  smm = submenu.menu
+  smi = smm.items
+  
+  # XP
+  smi.append(
+    menu.SimpleAdjuster( smm, hal,
+      prio=HAL_PRIORITY_MENU+3,
+      title='XP',
+      get_cur=lambda: char.data[_XP],
+      set_abs=char.set_xp
+    )
+  )
+  
+  # Level
+  lvmenu = menu.SubMenu( smm, hal,
+    prio=HAL_PRIORITY_MENU+3,
+    title='Change Level'
+  )
+  lvmm = lvmenu.menu
+  lvmi = lvmm.items
+  smi.append(lvmenu)
+  #
+  for i, lv in enumerate(char.levels):
+    
+    # Don'gt offer to switch to current level
+    if i == char.current_level:
+      continue
+    
+    # Add level to menu
+    lvmi.append(
+      menu.FunctionConfirmer( lvmm, hal,
+        prio=HAL_PRIORITY_MENU+4,
+        title=lv[_LV_NAME],
+        confirmation='Change level?',
+        con_func=lambda: char.switch_level(i)
+      )
+    )
   
   return submenu
 
