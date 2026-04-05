@@ -1,6 +1,14 @@
 TODO
 ====
-- Move char.levels into char.data.  Add level switcher to oled menu.  Testy testy
+* Levels
+  - Add level switcher to oled menu.
+  - What happens when max reduces - done, test this
+  - What about order of levels
+    - Change sf levels format to a list, have the name as a string within the object
+    - Keep as a list everywhere.  Add level name to tuple.
+    - Affects everything that has the _LV constants.  Anything else?
+  - What about items with same name - done, test this
+  - Testy testy
 * Should be able to get temp hp (and take damage) during death saves.  temp hp buffer against damage, but don't stabilise.
 - _char_gfx.py:
   - Make draw_play_screen() give drawThickArc() a scratch buffer

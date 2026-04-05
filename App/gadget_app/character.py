@@ -1,7 +1,7 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 03 Apr 2026
+# 05 Apr 2026
 
 # Builtin libraries
 import os
@@ -42,8 +42,8 @@ _MAX_ITEM_LEVEL = const(_SIZE_MPY_SMALLINT) # (Python integer) The most charges 
 _MAX_DEATH_SAVES = const(3) # (5e SRD) How many successes or failures can we have?
 
 # Indexes into the Character.data object
-_NAME = const(0) # NO LONGER USED - replaced with Character.name
-_TITLE = const(1) # NO LONGER USED - replaced with Character.current_level
+#_NAME = const(0) # NO LONGER USED - replaced with Character.name
+#_TITLE = const(1) # NO LONGER USED - replaced with Character.current_level
 _XP = const(2)
 _CURRENCY = const(3)
 _HP = const(4)
@@ -88,7 +88,7 @@ _DEATH_STATUS_SV = const(1)
 _DEATH_STATUS_DD = const(2)
 _DEATH_STATUS_TUPLE = ('stable','saves','dead')
 
-# Index into the Levels objects
+# Index into the Levels tuples
 # ( hp, hd, spells, items )
 _LV_HP = const(0)
 _LV_HD = const(1)
@@ -482,8 +482,6 @@ class Character:
     del df, di
     
     # Level
-    # We don't alter the 'levels' object.  Keep as-is for re-saving later
-    # HOWEVER: If we change the format significantly, we'll need to do some conversion on these to keep everything consistent
     cl = data.get('currentLevel')
     lvf = data.get('levels')
     if not type(lvf) is dict:
@@ -706,21 +704,45 @@ class Character:
     # copy all 'current' values from old to new ( hp, hd, spells, items )
     
     # Transfer HP
-    newlev[_LV_HP][_HP_CURR] = oldlev[_LV_HP][_HP_CURR]
+    if newlev[_LV_HP][_HP_MAX] >= oldlev[_LV_HP][_HP_MAX]:
+      # Copy the current HP from old to new
+      newlev[_LV_HP][_HP_CURR] = oldlev[_LV_HP][_HP_CURR]
+    else:
+      # Set the new HP to max
+      newlev[_LV_HP][_HP_CURR] = newlev[_LV_HP][_HP_MAX]
     
     # Transfer HD
-    newlev[_LV_HD][_HD_CURR] = oldlev[_LV_HD][_HD_CURR]
+    if newlev[_LV_HD][_HD_MAX] >= oldlev[_LV_HD][_HD_MAX]:
+      # Copy the current HD from old to new
+      newlev[_LV_HD][_HD_CURR] = oldlev[_LV_HD][_HD_CURR]
+    else:
+      # Set the new HD to max
+      newlev[_LV_HD][_HD_CURR] = newlev[_LV_HD][_HD_MAX]
     
     # Transfer spells
     for i in range(min( len(newlev[_LV_SPELLS][_SPELLS_CURR]), len(oldlev[_LV_SPELLS][_SPELLS_CURR]) )):
-      newlev[_LV_SPELLS][_SPELLS_CURR][i] = oldlev[_LV_SPELLS][_SPELLS_CURR][i]
+      if newlev[_LV_SPELLS][_SPELLS_MAX][i] >= oldlev[_LV_SPELLS][_SPELLS_MAX][i]:
+        # Copy the remaining spell slots at this level, from old to new
+        newlev[_LV_SPELLS][_SPELLS_CURR][i] = oldlev[_LV_SPELLS][_SPELLS_CURR][i]
+      else:
+        # Set slots remaning to max
+        newlev[_LV_SPELLS][_SPELLS_CURR][i] = newlev[_LV_SPELLS][_SPELLS_MAX][i]
     
     # Transfer items
-    # Make dict of old item current values, indexed by item name
-    old_items = { it[_ITEMS_NAME] : it[_ITEMS_CURR] for it in oldlev[_LV_ITEMS] }
-    for it in newlev[_LV_ITEMS]:
-      # Assign old current value to new item if name found, otherwise keep new current value
-      it[_ITEMS_CURR] = old_items.get( it[_ITEMS_NAME], it[_ITEMS_CURR] )
+    # Step through new item list
+    for ni in newlev[_LV_ITEMS]:
+      
+      # If the (new) item doesn't have a name, don't try to transfer anything
+      if ni[_ITEMS_NAME] == '':
+        continue
+      
+      # Step through old item list, looking for first name match
+      for oi in oldlev[_LV_ITEMS]:
+        if oi[_ITEMS_NAME] == ni[_ITEMS_NAME]:
+          ni[_ITEMS_CURR] = oi[_ITEMS_CURR] # Transfer the current value
+          oi[_ITEMS_NAME] = '' # Prevent matching again
+          break
+          
     
     print('merged', newlev )
     print('TESTING: NOT IMPLEMENTED')
