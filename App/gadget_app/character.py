@@ -1,7 +1,7 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 05 Apr 2026
+# 06 Apr 2026
 
 # Builtin libraries
 import os
@@ -483,13 +483,17 @@ class Character:
     del df, di
     
     # Level
-    clname = data.get('currentLevel') # A string matching a level name
+    clname = data.get('currentLevel') # Expecting a string matching a level name
     lvf = data.get('levels')
     if not type(lvf) is list:
       raise CharacterError('Invalid levels section')
     if len(lvf) == 0:
       raise CharacterError('No levels defined')
+    #
+    # Process all the levels
     levels = [ self._load_level_v1(x) for x in lvf ]
+    #
+    # Figure out which index is the current level
     lvi = None
     if clname is None and len(levels) == 1: # If no currentLevel is defined, but the answer is obvious
       lvi = 0
@@ -500,21 +504,23 @@ class Character:
           break
     if lvi is None:
       raise CharacterError('currentLevel does not match any level name')
+    #
+    # Output
     lv = levels[lvi]
     
-    # Assemble / assign
-    self.levels = levels
-    self.current_level = lvi
+    # Assemble / capture
     self.name = name
+    self.current_level = lvi
+    self.levels = levels
     self.data = [
       '', # Former 'name' slot
-      lv[_LV_NAME], # MP 1.26 doesn't fully support PEP 448 (Additional Unpacking Generalizations)
+      lv[_LV_NAME], # String, shouldn't be a ref (and doesn't get changed anyway)
       xp,
       currency,
-      lv[_LV_HP],
-      lv[_LV_HD],
-      lv[_LV_SPELLS],
-      lv[_LV_ITEMS],
+      lv[_LV_HP],     # array - passed as reference
+      lv[_LV_HD],     # bytearray - passed as reference
+      lv[_LV_SPELLS], # tuple - passed as reference
+      lv[_LV_ITEMS],  # list - passed as reference
       d,
     ]
   
@@ -624,7 +630,7 @@ class Character:
         'lr' : _ITEM_RESET_LR,
         'dawn' : _ITEM_RESET_DAWN,
       }
-      it[i] = [
+      it[i] = [ # [ current, max, reset, name ]
         cur,
         mx,
         sum([ r.get( x, 0 ) for x in rstf ]), # Reset bitfield
@@ -632,7 +638,7 @@ class Character:
       ]
     del itf, r, rstf
     
-    # Assemble and return
+    # Assemble and return ( name, hp, hd, spells, items )
     return (
       name,
       hp,
@@ -642,18 +648,15 @@ class Character:
     )
   
   # Extract the level-tuple from the current play data ( name, hp, hd, spells, items )
-  def _get_level_data(self) -> tuple[ str, array, bytearray, tuple[bytearray,bytearray], list ]:
-    d = self.data
-    return ( d[_LVNAME], d[_HP], d[_HD], d[_SPELLS], d[_ITEMS] )
+  #def _get_level_data(self) -> tuple[ str, array, bytearray, tuple[bytearray,bytearray], list ]:
+  #  d = self.data
+  #  return ( d[_LVNAME], d[_HP], d[_HD], d[_SPELLS], d[_ITEMS] )
   
   # Blindly overwrites f with the save data
   # Return bool indicating success/failure
   def _save_file(self, f ) -> bool:
     s = self.data
     lvs = self.levels
-    
-    # Update the current level with the play data
-    lvs[self.current_level] = self._get_level_data()
     
     sf = {
       'name'    : self.name,
@@ -674,7 +677,7 @@ class Character:
           'failures'  :s[_DEATH][_DEATH_NG],
         },
         'currentLevel' : s[_LVNAME],
-        'levels' : [
+        'levels' : [ # Don't need to update current level from char.data because everything is passed as refs anyway
           {
             'name'    : lv[_LV_NAME],
             'hp'      : dict(zip( ( 'current', 'max', 'temporary' ), lv[_LV_HP][:3] )),
@@ -695,7 +698,7 @@ class Character:
       }
     }
     
-    print(sf)
+    #print(sf)
     
     try:
       with open( f, 'w') as fd:
@@ -709,73 +712,61 @@ class Character:
   
   def switch_level(self, level:int, show=True ):
     
-    # Can't switch to this level
+    # Can't switch to the level we're already on
     if level == self.current_level:
       return
     
-    # old data = capture level fropm current data
-    oldlev = self._get_level_data()
+    # Get level tuples for comparison
+    old = self.levels[self.current_level]
+    new = self.levels[level]
     
-    # new data = load new level
-    # Deliberately don't use get() so that exception is raised if bad name is passed
-    newlev = self.levels[level]
-    
-    print(f'SWITCHING {self.data[_LVNAME]} => {newlev[_LV_NAME]}')
-    print('curr', oldlev )
-    print('new', newlev )
+    print(f'SWITCHING {old[_LV_NAME]} => {new[_LV_NAME]}')
+    print('curr', old )
+    print('new', new )
     
     # copy all 'current' values from old to new ( name, hp, hd, spells, items )
     
     # Transfer HP
-    if newlev[_LV_HP][_HP_MAX] >= oldlev[_LV_HP][_HP_MAX]:
-      # Copy the current HP from old to new
-      newlev[_LV_HP][_HP_CURR] = oldlev[_LV_HP][_HP_CURR]
-    else:
-      # Set the new HP to max
-      newlev[_LV_HP][_HP_CURR] = newlev[_LV_HP][_HP_MAX]
+    new[_LV_HP][_HP_CURR] = min( old[_LV_HP][_HP_CURR], new[_LV_HP][_HP_MAX] )
     
     # Transfer HD
-    if newlev[_LV_HD][_HD_MAX] >= oldlev[_LV_HD][_HD_MAX]:
-      # Copy the current HD from old to new
-      newlev[_LV_HD][_HD_CURR] = oldlev[_LV_HD][_HD_CURR]
-    else:
-      # Set the new HD to max
-      newlev[_LV_HD][_HD_CURR] = newlev[_LV_HD][_HD_MAX]
+    new[_LV_HD][_HD_CURR] = min( old[_LV_HD][_HD_CURR], new[_LV_HD][_HD_MAX] )
     
     # Transfer spells
-    for i in range(min( len(newlev[_LV_SPELLS][_SPELLS_CURR]), len(oldlev[_LV_SPELLS][_SPELLS_CURR]) )):
-      if newlev[_LV_SPELLS][_SPELLS_MAX][i] >= oldlev[_LV_SPELLS][_SPELLS_MAX][i]:
-        # Copy the remaining spell slots at this level, from old to new
-        newlev[_LV_SPELLS][_SPELLS_CURR][i] = oldlev[_LV_SPELLS][_SPELLS_CURR][i]
-      else:
-        # Set slots remaning to max
-        newlev[_LV_SPELLS][_SPELLS_CURR][i] = newlev[_LV_SPELLS][_SPELLS_MAX][i]
+    for i in range(min( len(new[_LV_SPELLS][_SPELLS_CURR]), len(old[_LV_SPELLS][_SPELLS_CURR]) )):
+      new[_LV_SPELLS][_SPELLS_CURR][i] = min( old[_LV_SPELLS][_SPELLS_CURR][i], new[_LV_SPELLS][_SPELLS_MAX][i] )
     
     # Transfer items
-    # Step through new item list
-    for ni in newlev[_LV_ITEMS]:
+    #
+    # We need to mangle the items to prevent double-counting.
+    # Make a reduced copy of the items to prevent mangling the real ones
+    olditems = [ [ x[_ITEMS_NAME], x[_ITEMS_CURR], x[_ITEMS_MAX] ] for x in old[_LV_ITEMS] ]
+    for ni in new[_LV_ITEMS]:
       
       # If the (new) item doesn't have a name, don't try to transfer anything
       if ni[_ITEMS_NAME] == '':
         continue
       
       # Step through old item list, looking for first name match
-      for oi in oldlev[_LV_ITEMS]:
-        if oi[_ITEMS_NAME] == ni[_ITEMS_NAME]:
-          ni[_ITEMS_CURR] = oi[_ITEMS_CURR] # Transfer the current value
-          oi[_ITEMS_NAME] = '' # Prevent matching again
-          break
-          
+      for oi in olditems:
+        if oi[0] == ni[_ITEMS_NAME]: # If we have a match
+          ni[_ITEMS_CURR] = min( oi[1], ni[_ITEMS_MAX] )
+          oi[0] = '' # Prevent matching again (in case of > 1 new item with same name)
+          break      # Prevent continuing (in case of > 1 old item with the same name)
     
-    print('merged', newlev )
-    #print('TESTING: NOT IMPLEMENTED')
-    #return
+    print('merged', new )
+    print()
     
     # new data into self.data
-    self.data[_HP] = newlev[_LV_HP]
-    self.data[_HD] = newlev[_LV_HD]
-    self.data[_SPELLS] = newlev[_LV_SPELLS]
-    self.data[_ITEMS] = newlev[_LV_ITEMS]
+    data = self.data
+    data[_LVNAME] = new[_LV_NAME]
+    data[_HP] = new[_LV_HP]
+    data[_HD] = new[_LV_HD]
+    data[_SPELLS] = new[_LV_SPELLS]
+    data[_ITEMS] = new[_LV_ITEMS]
+    
+    # Long rest also triggers save, but doesn't hurt to do it here too
+    self.save()
     
     # change self.current_level
     self.current_level = level
@@ -983,7 +974,6 @@ class Character:
     # Localise
     st = self.data
     h = st[_HP]
-    sps = st[_SPELLS]
     cgs = st[_ITEMS]
     
     # Will we need to update the eink after this?
@@ -1000,8 +990,8 @@ class Character:
     del hd_rst
     
     # Reset spell slots
-    for s in sps:
-      s[_SPELLS_CURR] = s[_SPELLS_MAX]
+    for i in range(len(st[_SPELLS][_SPELLS_CURR])):
+      st[_SPELLS][_SPELLS_CURR][i] = st[_SPELLS][_SPELLS_MAX][i]
     
     # Reset all long-rest charges to max
     for c in cgs:
@@ -1313,13 +1303,17 @@ class Character:
   def set_charge( self, chg, val, show=True ):
     
     assert type(val) is int
-    assert val >= 0
+    #assert val >= 0
     
     # Get the charge object
     c = self.data[_ITEMS][chg]
     
+    # Value must always be zero or positive
+    if not 0 <= val:
+      return
+    
     # Is there a max level for _this_ charge, and does the new val violate it?
-    if c[_ITEMS_MAX] and not 0 <= val <= c[_ITEMS_MAX]:
+    if c[_ITEMS_MAX] and not val <= c[_ITEMS_MAX]:
       return
     
     # Silently clamp to (max level for _any_ charge)

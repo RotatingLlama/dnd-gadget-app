@@ -1,20 +1,20 @@
 TODO
 ====
 * Levels
-  - BUGS REMAIN
-  - Add level switcher to oled menu. - done
-  - What happens when max reduces - done, test this
-  - item names no longer show on eink
-  - What about items with same name - done, test this
-  - Is the levels list updated automatically when releveant elements of char.data are updated?  Because copying refs, not data
-  - Testy testy
-* Should be able to get temp hp (and take damage) during death saves.  temp hp buffer against damage, but don't stabilise.
+  - Check that multiple items with same name behave as expected
+  - Mark github issue as resolved
 * BUG: If stable @ 0HP, but with temp hp, and take damage that is buffered by temp hp, char.damage() will still go into death saves
+* spell slots can reset on short rest for some classes
 - _char_gfx.py:
   - Make draw_play_screen() give drawThickArc() a scratch buffer
   - Move draw_play_screen() into character.py proper
   - Move the rest back into gfx.py
-- Move draw_mtx_* out of character.py and into menu.py.  Should be part of MatrixMenu
+* Add ability to adjust max HP during play
+  - Store original max hp
+  - Record new max hp - absolute or relative?
+  - Existing HP is not affected by max hp change except for getting clamped.  Health is conserved quantity, not damage.
+  - What to do with existing code that looks at max hp?
+* Should be able to get temp hp (and take damage) during death saves.  temp hp buffer against damage, but don't stabilise.
 * Combine 'charges' and other counters (gold, xp etc.)
   - 'max' property is optional
   - Assume zero minimum
@@ -26,27 +26,17 @@ TODO
   - Rationalise character load-in and matrix geometry calculation:
     - Both of these have opinions about how many charges are permissible
     - These opinions should always match, or better yet come from the same source
-* Rework savefile structure to include level options (refer to Github issue)
-- Allow save files to specify what ruleset applies to them
-  - 2014, 2024, pathfinder, etc
-  - make _play_screen() in gadget.py selectable (different rulesets will need different menu options)
-  - make Character class in character.py selectable (different rulesets will need different character behaviour and save options)
-  - everything else should be agnostic to this
 * character.py:
   - save_now() add optional force arg, otherwise do nothing unless char is dirty
   - If error during character load, output error in text file in char dir
   - Should mention (print or add to report) if an element was missing and a default assumed
-* Add ability to adjust max HP during play
-  - Store original max hp
-  - Record new max hp - absolute or relative?
-  - Existing HP is not affected by max hp change except for getting clamped.  Health is conserved quantity, not damage.
-  - What to do with existing code that looks at max hp?
+- Move draw_mtx_* out of character.py and into menu.py.  Should be part of MatrixMenu
+* BUG: "Uncaught exception in IRQ callback handler" sometimes when entering numbers with scroll wheel.  What causes this?
 - Death saves wishlist:
   - Better eink graphics to really sell the peril
   - Better deathsaves matrix menu, current one is a bit basic and underwhelming
 - Prompt to add health after spending hit dice on short rest
 - How to handle things that don't regain all charges on reset (eg. Armour of Magical Strength)
-* spell slots can reset on short rest for some classes
 - hw.py: Make 'low battery' threshold a round percentage instead of a voltage value
 - Smaller NOSD logo for when there's no SD but that's ok
 - Fonts
@@ -98,6 +88,7 @@ Gadget v0.4 - WIP
 Gameplay Changes & Bugfixes
 ---------------------------
 * Added support for death saves and permadeath
+* Added support for cleanly switching character level mid-session
 * Added support for items that reset at dawn (as opposed to long rest, etc.)
 * Fixed divide by zero errors when only one character is available to pick
 * Added support for tracking Platinum (in the Currency menu)

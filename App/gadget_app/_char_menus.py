@@ -2,7 +2,7 @@
 # Consider as part of character.py
 #
 # T. Lloyd
-# 05 Apr 2026
+# 06 Apr 2026
 
 from micropython import const
 
@@ -347,7 +347,6 @@ def _submenu_money( hal, char, parent ) -> menu.SubMenu:
   
   return submenu
 
-
 def _submenu_char( hal, char, parent ) -> menu.SubMenu:
   
   submenu = menu.SubMenu( parent, hal,
@@ -388,7 +387,7 @@ def _submenu_char( hal, char, parent ) -> menu.SubMenu:
         prio=HAL_PRIORITY_MENU+4,
         title=lv[_LV_NAME],
         confirmation='Change level?',
-        con_func=lambda: char.switch_level(i)
+        con_func=lambda q=i: char.switch_level(q) # Have to do this thing with default values because creating lambdas inside a loop
       )
     )
   
