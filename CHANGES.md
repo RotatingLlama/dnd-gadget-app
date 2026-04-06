@@ -6,8 +6,10 @@ TODO
   - What happens when max reduces - done, test this
   - item names no longer show on eink
   - What about items with same name - done, test this
+  - Is the levels list updated automatically when releveant elements of char.data are updated?  Because copying refs, not data
   - Testy testy
 * Should be able to get temp hp (and take damage) during death saves.  temp hp buffer against damage, but don't stabilise.
+* BUG: If stable @ 0HP, but with temp hp, and take damage that is buffered by temp hp, char.damage() will still go into death saves
 - _char_gfx.py:
   - Make draw_play_screen() give drawThickArc() a scratch buffer
   - Move draw_play_screen() into character.py proper

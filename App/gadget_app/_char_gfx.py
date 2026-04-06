@@ -1,7 +1,7 @@
 # Drawing functions for character.py
 #
 # T. Lloyd
-# 05 Apr 2026
+# 06 Apr 2026
 
 # Standard libraries
 from micropython import const
@@ -68,11 +68,11 @@ _TIT_MIDPOINT_Y  = const( 216 )
 #T2_dY = const(14)
 #T2_C = const(2)
 
-# Geometry for charges labels
-_CHG_X  = const(1)
-_CHG_Y  = const(0)
-_CHG_DY = const(19.7)
-_CHG_C  = const(1)
+# Geometry for items labels
+_ITEM_X  = const(1)
+_ITEM_Y  = const(0)
+_ITEM_DY = const(19.7)
+_ITEM_C  = const(1)
 
 # Geometry for spell slot indicator
 _SPL_X  = const(0)
@@ -91,7 +91,7 @@ _SPL_C  = const(1)
 _HP = const(4)
 #_HD = const(5)
 _SPELLS = const(6)
-_CHARGES = const(7)
+_ITEMS = const(7)
 _DEATH = const(8)
 #
 #_CURRENCY_COPPER = const(0)
@@ -114,7 +114,7 @@ _SPELLS_CURR = const(0)
 #_CHARGES_CURR = const(0)
 #_CHARGES_MAX = const(1)
 #_CHARGES_RESET = const(2)
-_CHARGES_NAME = const(3)
+_ITEMS_NAME = const(3)
 #
 _DEATH_STATUS = const(0)
 #_DEATH_OK = const(1)
@@ -478,14 +478,14 @@ def draw_play_screen( fb, char, lowbatt=False, scratchmem=None ):
     del height
   del nsp
   
-  ######## CHARGES ########
+  ######## ITEMS ########
   if data[_DEATH][_DEATH_STATUS] == _DEATH_STATUS_OK:
-    for i,chg in enumerate( data[_CHARGES] ):
-      fb.label( chg[_CHARGES_NAME], _CHG_X, _CHG_Y+round( _CHG_DY * i ), _CHG_C )
-    del i,chg
+    for i,itm in enumerate( data[_ITEMS] ):
+      fb.label( itm[_ITEMS_NAME], _ITEM_X, _ITEM_Y+round( _ITEM_DY * i ), _ITEM_C )
+    del i,itm
   elif data[_DEATH][_DEATH_STATUS] == _DEATH_STATUS_SV:
-    fb.label( 'SUCCESS', _CHG_X, _CHG_Y, 1 )
-    fb.label( 'FAILURE', _CHG_X, _CHG_Y+round( _CHG_DY ), 2 )
+    fb.label( 'SUCCESS', _ITEM_X, _ITEM_Y, 1 )
+    fb.label( 'FAILURE', _ITEM_X, _ITEM_Y+round( _ITEM_DY ), 2 )
   
   ######## HP BAR ########
   
