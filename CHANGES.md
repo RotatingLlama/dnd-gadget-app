@@ -9,11 +9,15 @@ TODO
   - Make draw_play_screen() give drawThickArc() a scratch buffer
   - Move draw_play_screen() into character.py proper
   - Move the rest back into gfx.py
-* Add ability to adjust max HP during play
+* HP update
+  - Add min/max to max hp adjuster
+  - Add max hp adjustment that shows on hp bar
+  - Add replacement hp, for wildshape etc.
   - Store original max hp
   - Record new max hp - absolute or relative?
   - Existing HP is not affected by max hp change except for getting clamped.  Health is conserved quantity, not damage.
   - What to do with existing code that looks at max hp?
+  - What about resurrection undie() if char was killed by reducing their max hp to zero?  What are the rules for that?
 * Should be able to get temp hp (and take damage) during death saves.  temp hp buffer against damage, but don't stabilise.
 * Combine 'charges' and other counters (gold, xp etc.)
   - 'max' property is optional

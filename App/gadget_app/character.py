@@ -1,7 +1,7 @@
 # Character-specific data and logic
 #
 # T. Lloyd
-# 06 Apr 2026
+# 07 Apr 2026
 
 # Builtin libraries
 import os
@@ -1244,20 +1244,17 @@ class Character:
   
   # Sets the max hit points
   # DOES validate
-  # NOT USED ANYWHERE
-  '''
   def set_max_hp( self, val, show=True ):
-    raise NotImplementedError
+    d = self.data
     
     assert type(val) is int
-    assert val >= 1
+    assert val >= 0
     
     # Set the max
-    self.data[_HP][_HP_MAX] = val # TODO: Clamp to max value
+    d[_HP][_HP_MAX] = min( val, _MAX_HP )
     
     # Clamp current to new max
-    if self.data[_HP][_HP_CURR] > val:
-      self.data[_HP][_HP_CURR] = val
+    d[_HP][_HP_CURR] = min( d[_HP][_HP_CURR], d[_HP][_HP_MAX] )
     
     self.save()
     
@@ -1265,7 +1262,6 @@ class Character:
     
     if show:
       self.show_curr_hp()
-  '''
   
   # Sets the current hit dice
   # DOES validate

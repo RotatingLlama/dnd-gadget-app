@@ -2,7 +2,7 @@
 # Consider as part of character.py
 #
 # T. Lloyd
-# 06 Apr 2026
+# 07 Apr 2026
 
 from micropython import const
 
@@ -233,6 +233,14 @@ def _submenu_health_stable( hal, char, parent ) -> menu.SubMenu:
       title='Temp HP',
       get_cur=lambda: 0, # Always starts at zero because we're always replacing
       set_abs=char.set_temp_hp
+    )
+  )
+  smi.append(
+    menu.SimpleAdjuster( smm, hal,
+      prio=HAL_PRIORITY_MENU+3,
+      title='Max HP',
+      get_cur=lambda: char.data[_HP][_HP_MAX],
+      set_abs=char.set_max_hp
     )
   )
   
