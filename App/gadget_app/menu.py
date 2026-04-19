@@ -2,7 +2,7 @@
 # For OLED and LED Matrix displays
 #
 # T. Lloyd
-# 16 Mar 2026
+# 19 Apr 2026
 
 from .common import DeferredTask
 
@@ -861,8 +861,8 @@ class IncrementAccelerator:
   def __init__(self, cb ):
     self.cb = cb
     
-    self._incs = (1,10,100,1000)
-    self._thresh = 40
+    self._incs = (1,2,5,10,20,50,100) # (1,10,100,1000)
+    self._thresh = 20
     self._lmax = len(self._incs) - 1
     
     self.reset()
@@ -871,6 +871,7 @@ class IncrementAccelerator:
     self.direction = 0
     self.runlength = 0
     self.currlevel = 0
+    self.n_runs = 0
   
   # Takes -1 or +1 for the direction of adjustment.
   # Calls self.cb() with the amount of increment to move
@@ -882,9 +883,19 @@ class IncrementAccelerator:
     # If we have just changed direction (or just started)
     if s != self.direction:
       
-      # Decrease the current level
-      if self.currlevel > 0:
-        self.currlevel -= 1
+      self.n_runs += 1
+      
+      if self.n_runs == 2:
+          
+        # Decrease the current level
+        if self.currlevel > 0:
+          self.currlevel -= 1
+      
+      elif self.n_runs >= 3:
+        
+        # Reset to first level
+        self.currlevel = 0
+        self.n_runs = 1
       
       self.direction = s
       self.runlength = 1

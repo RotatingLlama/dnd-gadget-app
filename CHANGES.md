@@ -58,9 +58,7 @@ TODO
   - Add a menu item to view errors that have been caught and logged
   - Add a menu item to take a screenshot
 - Way to skip character select screen and just go to last played
-- menu.py fast scrolling should trigger on more predictable intervals
-  - eg. 40, 400, 4000 etc.
-  - Instead of after n rotations, leading to 40, 440, 4440, etc.
+- menu.py: improve fast scrolling logic
   - Move some logic out of SimpleAdjuster and DoubleAdjuster, have the IncrementAccelerator know the entire adjustment value (instead of just one rotation at a time)
   - Just verify/clamp the total adjustment that IncrementAccelerator presents
   - Feedback to IncrementAccelerator if it's being clamped?
