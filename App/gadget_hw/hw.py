@@ -2,7 +2,7 @@
 # Some original code in einktest.py
 #
 # T. Lloyd
-# 15 Sep 2025
+# 19 Apr 2026
 
 # Standard libraries
 from machine import I2C, SPI, ADC, PWM, Pin
@@ -125,10 +125,16 @@ class HW:
     # Do the optional stuff that can get set/reset later
     self.init(*args,**kwargs)
   
+  # Things to be set up after instantiation
   def init(self, cb=None ):
-    global _cb_input
     if callable(cb):
-      _cb_input = cb
+      self.set_callback(cb)
+  
+  # Pass all input to the given callable.
+  # Callable must accept one integer argument
+  def set_callback(self, cb ):
+    global _cb_input
+    _cb_input = cb
   
   # Set needle position.  Takes a float 0.0 to 1.0
   def set_needle_position( self, pc ):
@@ -166,6 +172,7 @@ class HW:
   
   # Left  = 0 1 3 2
   # Right = 3 1 0 2
+  '''
   @micropython.native
   def _isr_rot_old(self,pin):
     
@@ -184,7 +191,7 @@ class HW:
       elif _rot[1] == 0:
         # Right / clockwise
         schedule( _cb_cw, None )
-  
+  '''
   @micropython.viper
   def _isr_rot(self,pin):
     

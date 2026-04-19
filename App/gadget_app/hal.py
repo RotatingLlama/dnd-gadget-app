@@ -2,7 +2,7 @@
 # Some original code in einktest.py
 #
 # T. Lloyd
-# 31 Jan 2026
+# 19 Apr 2026
 
 from micropython import const
 import asyncio
@@ -21,6 +21,10 @@ _EINK_BORDER_COLOUR = const(0)
 # Frequency to set the needle to for a wobbling effect
 _NEEDLE_WOBBLE_SPEED = const(8) # Least freq supported by hardware
 
+# Blank lambdas are used throughout this file - avoid defining them multiple times
+#LFN = lambda : None
+LFNX = lambda x : None
+
 class HAL:
   
   def __init__(self):
@@ -36,11 +40,12 @@ class HAL:
     self.sd = self.hw.sd
     
     # Input target, gets updated by _update_clients()
-    self._it = lambda x:None
+    #self._it = LFNX
     
     # Get the hardware input stream - this lambda will be called by schedule()
     # i is an int indicating which input this was
-    self.hw.init( cb=lambda i:self._it(i) )
+    #self.hw.init( cb=lambda i:self._it(i) )
+    self.hw.set_callback( LFNX )
     
     # Priority lock levels for each lockable feature
     self._features = {
@@ -155,7 +160,11 @@ class HAL:
         
         # Set the input target, if necessary
         if 'input' in c.features:
-          self._it = c.input_target if callable( c.input_target ) else lambda x: None
+          #self._it = c.input_target if callable( c.input_target ) else LFNX
+          if callable( c.input_target ):
+            self.hw.set_callback( c.input_target )
+          else:
+            self.hw.set_callback( LFNX )
         
         # Tell the client it's good to go
         c.ready = True
@@ -164,7 +173,8 @@ class HAL:
     
     # If everything has abandoned input, reset the input director to null
     if feat['input'] == 0:
-      self._it = lambda x: None
+      #self._it = LFNX
+      self.hw.set_callback( LFNX )
     
     if _DEBUG_VERBOSE_REGISTRATIONS:
       print('New priorities:',feat )

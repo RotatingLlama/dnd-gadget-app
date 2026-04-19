@@ -36,6 +36,12 @@ TODO
   - Should mention (print or add to report) if an element was missing and a default assumed
 - Move draw_mtx_* out of character.py and into menu.py.  Should be part of MatrixMenu
 * BUG: "Uncaught exception in IRQ callback handler" sometimes when entering numbers with scroll wheel.  What causes this?
+  - Is anything else displayed alongside this message?
+    https://github.com/orgs/micropython/discussions/11595
+    https://github.com/mungewell/pico-timecode/blob/main/pico_timecode.py
+    https://github.com/micropython/micropython/blob/master/shared/runtime/mpirq.c#L91
+  - Appears to be due to failure of MP to push a nonlocal callback to the stack, to handle the ISR.
+  - Don't want to just catch all exceptions though.  What should we be catching for this specific problem?
 - Death saves wishlist:
   - Better eink graphics to really sell the peril
   - Better deathsaves matrix menu, current one is a bit basic and underwhelming
