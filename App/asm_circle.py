@@ -6,6 +6,10 @@ import asyncio
 from gadget_hw import HW
 import time
 
+# Ref ARMv7-M Architecture Reference Manual
+_LSL = const( 0b00000 << 11 ) # LSL <Rd>, <Rm>, #<imm5> [ref p282] => data(2, _LSL | Rd | ( Rm <<3 ) | ( imm5 <<6 ) )
+_LSR = const( 0b00001 << 11 ) # LSR <Rd>, <Rm>, #<imm5> [ref p284] => data(2, _LSR | Rd | ( Rm <<3 ) | ( imm5 <<6 ) )
+
 # circle( buf, params )
 # buf = The raw buffer to draw to
 # params = array (see example below)
@@ -52,8 +56,8 @@ def circle(r0,r1) -> int:
   mov( r3, 3 )  # Pixel mask => r3 <<<<<<
   mov( r2, r1 ) # Copy pixel number => r2
   and_( r2, r3 ) # Masked pixel number => pixel number within byte => r2
-  mov(r4,1) # The number 1 => r4
-  lsl( r2, r4 ) # Convert number of pixels to shift into number of bits ( r2 *= 2 ) => r2 <<<<<<
+  # lsl( r2, r2, 1 )
+  data(2, _LSL | 2 | ( 2 <<3 ) | ( 1 <<6 ) ) # Convert number of pixels to shift into number of bits ( r2 *= 2 ) => r2 <<<<<<
   lsl( r0, r2 ) # Shift colour to correct position => r0
   lsl( r3, r2 ) # Shift mask to correct position => r3
   #
@@ -152,8 +156,8 @@ def circle(r0,r1) -> int:
   #
   mov( r1, r3 ) # radius => x => r1 <<<
   mov( r2, 0 )   # 0 => y => r2 <<<
-  mov( r4, 4 )   # The number 4 => r4
-  lsr( r3, r4 )  # r / 16 => t1 => r3 <<<<
+  # lsr( r3, r3, 4 )
+  data(2, _LSR | 3 | ( 3 <<3 ) | ( 4 <<6 ) ) # r / 16 => t1 => r3 <<<<
   label(_CIRCLE_LOOP)
   cmp( r1, r2 )  # Compare x - y
   bmi(_CIRCLE_END)  # Branch if negative ( x < y )

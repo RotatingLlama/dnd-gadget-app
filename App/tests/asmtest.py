@@ -8,6 +8,9 @@ import machine
 # RP2040 datasheet
 # https://pip-assets.raspberrypi.com/categories/814-rp2040/documents/RP-008371-DS-1-rp2040-datasheet.pdf
 
+# Ref ARMv7-M Architecture Reference Manual
+_BLX = const( 0b010001111 << 7 )# BLX <Rm> [ref p214] => data(2, _BLX | ( Rm <<3 ) )
+
 # Memory Locations (absolute)
 _ROM_VER = const(0x13)
 _ROM_DATA_TABLE_PTR = const(0x16)
@@ -67,7 +70,8 @@ def get_cr(r0) -> int:
   ldrh( r0, [r0,0] ) # Pointer to the lookup table (halfword)
   mov( r2, _HELPER_FN_PTR ) # Location of pointer to the helper function.
   ldrh( r2, [r2,0] ) # Pointer to the helper function (halfword)
-  data(2, 0x4780 | 2 <<3) # BLX(r2) # Helper function puts memory address into r0
+  # blx( r2 )
+  data(2, _BLX | ( 2 <<3 ) ) # Helper function puts memory address into r0
   pop({pc})
   
   # Copyright notice
@@ -118,7 +122,8 @@ def tan_test(r0) -> int:
   ldrh( r0, [r0,0] ) # Pointer to the lookup table (halfword)
   mov( r2, _HELPER_FN_PTR ) # Location of pointer to the helper function.
   ldrh( r2, [r2,0] ) # Pointer to the helper function (halfword)
-  data(2, 0x4780 | 2 <<3) # BLX(r2) # Helper function puts memory address into r0
+  # blx( r2 )
+  data(2, _BLX | ( 2 <<3 ) ) # Helper function puts memory address into r0
   pop({pc})
   
   # Get the Float Table location
@@ -144,7 +149,8 @@ def tan_test(r0) -> int:
   # Run tan function
   ldr( r0, [ r4, 0 ] ) # buf[0] => r0
   ldr( r2, [ r7, _FTAN ] ) # Get tan function => r2
-  data(2, 0x4780 | 2 <<3) # BLX(r2) # Run tan function
+  # blx( r2 )
+  data(2, _BLX | ( 2 <<3 ) ) # Run tan function
   str( r0, [ r4, 4 ] ) # Result => buf[1]
 
 @micropython.asm_thumb
