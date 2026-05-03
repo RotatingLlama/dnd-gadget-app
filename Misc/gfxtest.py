@@ -320,6 +320,22 @@ def carc( cx:int, cy:int, ro:int, ri:int, start:float, end:float, oc:int=0, fc:i
     mend = tan(end+_PI_2) # Opposite / adjacent
     ev = 0
   
+  # Octants
+  #
+  # Octants that don't contain the start or end will either be completely on or completely off - no need to check
+  # Two bytes:
+  # draw - bitfield indicating whether to just draw
+  # check - bitfield indicating whether to check (either one or two bits of this byte should be set)
+  #
+  # algo:
+  # if draw: draw()
+  # elseif check:
+  #   do_check()
+  #   if true: draw()
+  #
+  # octs that are not to be drawn and not to be checked, simply do not get drawn
+  #
+  
   def ckp( x, y ) -> bool:
     hx = int(x < 0) # Which half is x in?
     
