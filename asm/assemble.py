@@ -4,7 +4,8 @@
 # 18 May 2026
 
 # TODO:
-# The output file name is the same as the input filename of pyasm2s.py, so this script's output clobbers the original input
+# Filenames to follow function names (maybe this is a job for pyasm2s.py though)
+# Check before clobbering output file, save to different name if necessary
 
 import sys
 import subprocess
@@ -52,7 +53,8 @@ if objcopy_output.returncode != 0:
   err('objcopy failed')
 
 # Main loop
-with open( f'{stem}.bin', 'rb' ) as fd_bin, open( f'{stem}.py', 'w' ) as fd_py:
+out_file = f'{stem}.py'
+with open( f'{stem}.bin', 'rb' ) as fd_bin, open( out_file, 'w' ) as fd_py:
   
   # Write the top of the output .py file
   fd_py.write(PY_HEADER)
@@ -69,3 +71,5 @@ with open( f'{stem}.bin', 'rb' ) as fd_bin, open( f'{stem}.py', 'w' ) as fd_py:
     
     # Format the opcode and wrap it in data() for MicroPython
     fd_py.write(f'  data(2,0x{op:04x})\n')
+
+print(f'Saved to {out_file}')

@@ -5,13 +5,14 @@
 # 18 May 2026
 
 # TODO:
-# Match function signature
-# assemble.py overwrites our input python file with its new one
-# Alert when we encounter data() statements on the input
-# Deal with embedded constants (somehow)
+# Deal with embedded constants
+# - Detect const(), transform into .set
+# - Treat text in args as immediate, if match const add #
 # Deal with multiple separate assembly functions in one file
-# Investigate whether ".balign 2" would work in the .s file
-# Suppport MP align() statement
+# - This can be better way of not clobbering original .py file, if function name != filename
+# align() directive is implemented, but not tested
+#
+# Match function signature - WONTFIX, can't carry through .s
 
 import sys
 from pathlib import Path
@@ -20,14 +21,12 @@ import re
 # We see this, we've hit the thing we're interested in
 KEY = '@micropython.asm_thumb'
 
-OP_INDENT = 16
+OP_INDENT = 2
 OP_PAD = 8
-#ARG_INDENT = 20
 
 # Define regular expressions to help with converting py-assembly into real assembly
-re_label = re.compile(r'label\((.+)\)')
 re_comment = re.compile(r'([^#]*)#?(.*)') # Always returns two strings, split by the first '#' (if any)
-re_op_args = re.compile( r'(.+)\((.*)\)' ) # If match, always returns 2 strings.
+re_op_args = re.compile( r'([^\(]+)\((.*)\)' ) # If match, always returns 2 strings.
 re_num = re.compile(r'^(0x[0-9a-f]+|[0-9]+)$')
 re_brac = re.compile(r'(.*)\[(.*)\]')
 
@@ -36,39 +35,36 @@ def err(msg:str):
   print(msg)
   sys.exit()
 
+# Process the MicroPython data() instruction into bytes
+def process_data( arg:str ) -> bytearray|None:
+  args = arg.split(',')
+  try:
+    size = int( args[0].strip() )
+  except ValueError:
+    return None
+  ba = bytearray()
+  for i in range( 1, len(args) ):
+    try:
+      a = int( args[i].strip(), 0 )
+    except ValueError:
+      return None
+    for _ in range(size):
+      ba.append( a & 0xff )
+      a >>= 8
+  return ba
+
 # Process a line
-#have_label = False
 def process_line( line:str ) -> str:
-  #global have_label
   
   # Extract comments
-  #comment = None
   cg = re_comment.match(line).groups()
   line = cg[0]
   comment = cg[1]
   if comment:
-    comment = f'@{comment}\n'
-  #  cmt = cmt.groups()
-  #  line = cmt[0]
-  #  if len(cmt) > 1:
-  #    comment = cmt[1]
+    comment = f'@{comment}'
   
-  # Treat labels differently
-  lb = re_label.match(line)
-  if lb:
-    #label = lb.group(1) + ':'
-    #have_label = True
-    return f'{lb.group(1)}:{comment}'
-    #label.ljust(OP_INDENT)
-  
-  # Indent compensation for labels
-  '''
-  if have_label:
-    out = ''
-  else:
-    out = ' '*OP_INDENT
-  have_label = False
-  '''
+  # Indent most lines
+  out = ' '*OP_INDENT
   
   # Get the op and args
   op = None
@@ -78,32 +74,52 @@ def process_line( line:str ) -> str:
     oag = oam.groups()
     op = oag[0]
     args = oag[1]
+  #print(op,'::',args)
   
   # If there's no op here, deal with any comment and stop
-  if not op:
-    if comment:
-      return comment.ljust(OP_INDENT)
-    else:
-      return '\n'
+  if not (op and args):
+    return out + comment + '\n'
   
   # We now definitely have an op
   
+  # Labels
+  if op == 'label':
+    if comment:
+      return f'{args}: {comment}\n'
+    else:
+      return f'{args}:\n'
+  
+  # Alignment
+  if op == 'align':
+    out += f'.balign {args}'
+    if comment:
+      out += f' {comment}'
+    out += '\n'
+    return out
+  
+  # Data
+  if op == 'data':
+    ba = process_data(args)
+    if ba is None:
+      return '.err @ Invalid data object in MP file\n'
+    bytelist = []
+    for b in ba:
+      bytelist.append( f'0x{b:02x}' )
+    out += '.byte'.ljust(OP_PAD)
+    out += ', '.join(bytelist)
+    if comment:
+      out += f' {comment}'
+    out += '\n'
+    return out
+    
   # Correct this Micropython-ism
   if op == 'and_':
     op = 'and'
   
+  # If we're here, we have a regular op
+  
   # Add the op to the line
-  out = op.ljust(OP_PAD)
-  
-  # If there's no args here, deal with any comment and stop
-  if not args:
-    if comment:
-      out += comment.ljust(OP_INDENT)
-    else:
-      out += '\n'
-    return out
-  
-  # We now definitely have arg(s)
+  out += op.ljust(OP_PAD)
   
   a = ['','']
   
@@ -128,13 +144,15 @@ def process_line( line:str ) -> str:
     a[i] = ', '.join(aaa)
   #
   if a[1]:
-    args = f'{a[0]} [{a[1]}]'
+    args = f'{a[0]}[ {a[1]} ]'
   else:
     args = a[0]
-    
-  out += args.ljust(16)
   
-  return f'{out}{comment}\n'
+  if comment:
+    out += f'{args:15s} {comment}\n'
+  else:
+    out += args + '\n'
+  return out
 
 # Sanity
 if len( sys.argv ) == 0:
@@ -147,12 +165,8 @@ pyasm_file = Path(sys.argv[1])
 if not pyasm_file.is_file():
   err('Not a file')
 
-# Useful bits of the input filename
-dir = pyasm_file.parent
-stem = pyasm_file.stem
-
 # Output file
-s_file = dir / f'{stem}.s'
+s_file = pyasm_file.parent / f'{pyasm_file.name}.s'
 
 # Tracking variables used during the loop
 in_asm_fn = 0
@@ -165,7 +179,6 @@ with open( pyasm_file, 'r' ) as py_fd, open( s_file, 'w' ) as s_fd:
   
   # Write the boilerplate at the top of the .s file
   s_fd.write('.section .text,"ax"\n')
-  s_fd.write(' '*OP_INDENT + '.balign 4\n')
   s_fd.write('\n')
   s_fd.write('main:\n')
   
@@ -214,4 +227,6 @@ with open( pyasm_file, 'r' ) as py_fd, open( s_file, 'w' ) as s_fd:
       s_fd.write( process_line( ln[indent:].strip() ) )
   
   # Finish up the .s file
-  s_fd.write('\n\n.end\n')
+  s_fd.write('\n.end\n')
+
+print(f'Saved to {s_file}')
