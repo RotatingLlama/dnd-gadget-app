@@ -21,13 +21,14 @@ import re
 KEY = '@micropython.asm_thumb'
 
 OP_INDENT = 16
+OP_PAD = 8
 #ARG_INDENT = 20
 
 # Define regular expressions to help with converting py-assembly into real assembly
 re_label = re.compile(r'label\((.+)\)')
-re_comment = re.compile(r'([^#]*)#(.*)')
-re_op = re.compile( r'(.+)\((.*)\)' )
-re_num=re.compile(r'^(0x[0-9a-f]+|[0-9]+)$')
+re_comment = re.compile(r'([^#]*)#?(.*)') # Always returns two strings, split by the first '#' (if any)
+re_op_args = re.compile( r'(.+)\((.*)\)' ) # If match, always returns 2 strings.
+re_num = re.compile(r'^(0x[0-9a-f]+|[0-9]+)$')
 re_brac = re.compile(r'(.*)\[(.*)\]')
 
 # Convenience function for when things go wrong
@@ -36,84 +37,104 @@ def err(msg:str):
   sys.exit()
 
 # Process a line
-have_label = False
+#have_label = False
 def process_line( line:str ) -> str:
-  global have_label
+  #global have_label
   
   # Extract comments
-  _comment = None
-  cmt = re_comment.match(line)
-  if cmt:
-    cmt = cmt.groups()
-    line = cmt[0]
-    if len(cmt) > 1:
-      _comment = cmt[1]
+  #comment = None
+  cg = re_comment.match(line).groups()
+  line = cg[0]
+  comment = cg[1]
+  if comment:
+    comment = f'@{comment}\n'
+  #  cmt = cmt.groups()
+  #  line = cmt[0]
+  #  if len(cmt) > 1:
+  #    comment = cmt[1]
   
   # Treat labels differently
   lb = re_label.match(line)
   if lb:
-    g = lb.group(1) + ':'
-    have_label = True
-    return g.ljust(OP_INDENT)
+    #label = lb.group(1) + ':'
+    #have_label = True
+    return f'{lb.group(1)}:{comment}'
+    #label.ljust(OP_INDENT)
   
   # Indent compensation for labels
+  '''
   if have_label:
     out = ''
   else:
     out = ' '*OP_INDENT
   have_label = False
+  '''
   
   # Get the op and args
   op = None
   args = None
-  op_m = re_op.match(line)
-  if op_m:
-    og = op_m.groups()
-    op = og[0]
-    if len(og) > 1:
-      args = og[1]
+  oam = re_op_args.match(line)
+  if oam:
+    oag = oam.groups()
+    op = oag[0]
+    args = oag[1]
   
-  if op:
-    if op == 'and_':
-      op = 'and'
-    out += op.ljust(8)
-  
-  if args:
-    
-    a = ['','']
-    
-    # Do we have secondary brackets?
-    ab = re_brac.match(args)
-    if ab:
-      abg = ab.groups()
-      a[0] = abg[0].strip()
-      a[1] = abg[1].strip()
+  # If there's no op here, deal with any comment and stop
+  if not op:
+    if comment:
+      return comment.ljust(OP_INDENT)
     else:
-      a[0] = args
-    
-    for i in range(2):
-      aaa = a[i].split(',')
-      for j in range(len(aaa)):
-        aaa[j] = aaa[j].strip()
-        #if aaa[j] == '':
-        #  continue
-        nm = re_num.match(aaa[j])
-        if nm:
-          aaa[j] = f'#{aaa[j]}'
-      a[i] = ', '.join(aaa)
-    #
-    if a[1]:
-      args = f'{a[0]} [{a[1]}]'
+      return '\n'
+  
+  # We now definitely have an op
+  
+  # Correct this Micropython-ism
+  if op == 'and_':
+    op = 'and'
+  
+  # Add the op to the line
+  out = op.ljust(OP_PAD)
+  
+  # If there's no args here, deal with any comment and stop
+  if not args:
+    if comment:
+      out += comment.ljust(OP_INDENT)
     else:
-      args = a[0]
-      
-    out += args.ljust(16)
+      out += '\n'
+    return out
   
-  if _comment:
-    out += f'@{_comment}'
+  # We now definitely have arg(s)
   
-  out += '\n'
-  return out
+  a = ['','']
+  
+  # Do we have secondary brackets?
+  ab = re_brac.match(args)
+  if ab:
+    abg = ab.groups()
+    a[0] = abg[0].strip()
+    a[1] = abg[1].strip()
+  else:
+    a[0] = args
+  
+  for i in range(2):
+    aaa = a[i].split(',')
+    for j in range(len(aaa)):
+      aaa[j] = aaa[j].strip()
+      #if aaa[j] == '':
+      #  continue
+      nm = re_num.match(aaa[j])
+      if nm:
+        aaa[j] = f'#{aaa[j]}'
+    a[i] = ', '.join(aaa)
+  #
+  if a[1]:
+    args = f'{a[0]} [{a[1]}]'
+  else:
+    args = a[0]
+    
+  out += args.ljust(16)
+  
+  return f'{out}{comment}\n'
 
 # Sanity
 if len( sys.argv ) == 0:
