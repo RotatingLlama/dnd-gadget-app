@@ -6,7 +6,9 @@
 
 # TODO:
 # Deal with embedded constants
-# - Detect const(), transform into .set
+# - Implemented (but not tested) as direct insertion into instruction
+# - Change this to keep as named constants, possibly in external included file
+# - Need to pre-scan input file for consts and definitions to decide how to treat them
 # - Treat text in args as immediate, if match const add #
 # Multiple functions in one .py file is implemented, but not tested
 # align() directive is implemented, but not tested
@@ -26,9 +28,10 @@ OP_PAD = 8
 # Define regular expressions to help with converting py-assembly into real assembly
 re_comment = re.compile(r'([^#]*)#?(.*)') # Always returns two strings, split by the first '#' (if any)
 re_op_args = re.compile( r'([^\(]+)\((.*)\)' ) # If match, always returns 2 strings.
-re_num = re.compile(r'^(0x[0-9a-f]+|[0-9]+)$')
+re_num = re.compile(r'^(0x[a-fA-F0-9_]+|0b[01_\]+|[0-9_]+)$')
 re_brac = re.compile(r'(.*)\[(.*)\]')
 re_pyfn = re.compile(r'def ([a-zA-Z0-9_]+) *\(') # If match, returns function name
+re_const = re.compile(r'([_A-Z0-9]+) *= *const\( *(0x[a-fA-F0-9_]+|0b[01_\]+|[0-9_]+) *\)') # If match, returns constant name and value
 
 # Convenience function for when things go wrong
 def err(msg:str):
@@ -54,7 +57,7 @@ def process_data( arg:str ) -> bytearray|None:
   return ba
 
 # Process a line
-def process_line( line:str ) -> str:
+def process_line( line:str, consts:dict[str,str]={} ) -> str:
   
   # Extract comments
   cg = re_comment.match(line).groups()
@@ -141,6 +144,10 @@ def process_line( line:str ) -> str:
       nm = re_num.match(aaa[j])
       if nm:
         aaa[j] = f'#{aaa[j]}'
+        continue
+      c = consts.get(aaa[j])
+      if c is not None:
+        aaa[j] = f'#{c}'
     a[i] = ', '.join(aaa)
   #
   if a[1]:
@@ -194,6 +201,7 @@ in_asm_fn = 0
 outer_indent = None
 asm_indent = None
 s_file = None
+consts = {}
 
 # Main loop
 with open( pyasm_file, 'r' ) as py_fd:
@@ -211,12 +219,20 @@ with open( pyasm_file, 'r' ) as py_fd:
         indent += 1
       else:
         break
-      
-    # We've found the start of an assembly function
+    
+    # We're not currently in an assembly function
     if in_asm_fn == 0:
+      
+      # But we've found the start of an assembly function
       if ln[indent:].strip() == KEY:
         in_asm_fn = 1
         outer_indent = indent
+        continue
+      
+      # We've found a constant definition
+      cr = re_const.match(ln[indent:])
+      if cr:
+        consts.update({ cr.group(1) : cr.group(2) })
         continue
     
     # Next line should be the function signature
@@ -246,4 +262,4 @@ with open( pyasm_file, 'r' ) as py_fd:
         continue
       
       # Convert the line and write it to the .s file
-      s_file.write( process_line( ln[indent:].strip() ) )
+      s_file.write( process_line( ln[indent:].strip(), consts ) )
