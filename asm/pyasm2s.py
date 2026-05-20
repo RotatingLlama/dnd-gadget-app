@@ -2,14 +2,13 @@
 # Extract that function and save as a .s file, for actual assembly
 #
 # T. Lloyd
-# 18 May 2026
+# 20 May 2026
 
 # TODO:
 # Deal with embedded constants
 # - Detect const(), transform into .set
 # - Treat text in args as immediate, if match const add #
-# Deal with multiple separate assembly functions in one file
-# - This can be better way of not clobbering original .py file, if function name != filename
+# Multiple functions in one .py file is implemented, but not tested
 # align() directive is implemented, but not tested
 #
 # Match function signature - WONTFIX, can't carry through .s
@@ -29,6 +28,7 @@ re_comment = re.compile(r'([^#]*)#?(.*)') # Always returns two strings, split by
 re_op_args = re.compile( r'([^\(]+)\((.*)\)' ) # If match, always returns 2 strings.
 re_num = re.compile(r'^(0x[0-9a-f]+|[0-9]+)$')
 re_brac = re.compile(r'(.*)\[(.*)\]')
+re_pyfn = re.compile(r'def ([a-zA-Z0-9_]+) *\(') # If match, returns function name
 
 # Convenience function for when things go wrong
 def err(msg:str):
@@ -154,8 +154,32 @@ def process_line( line:str ) -> str:
     out += args + '\n'
   return out
 
+# Turn a function name into an output filename
+def fn2filename( pyfile:str, fn:str ) -> str:
+  return f'{pyfile}-{fn}.s'
+
+# Handles everything related to the output file(s)
+class SFile:
+  def __init__(self, filename:str ):
+    self.path = filename
+    self._fd = open( self.path, 'w' )
+    
+    self.write = self._fd.write
+    
+    # Write the boilerplate at the top of the .s file
+    self.write('.section .text,"ax"\n')
+    self.write('\n')
+    self.write('main:\n')
+  
+  def close(self):
+    self.write('\n.end\n')
+    self._fd.close()
+  
+  def __del__(self):
+    self._fd.close()
+
 # Sanity
-if len( sys.argv ) == 0:
+if len( sys.argv ) <= 1:
   err('No args')
 
 # Input file
@@ -165,22 +189,14 @@ pyasm_file = Path(sys.argv[1])
 if not pyasm_file.is_file():
   err('Not a file')
 
-# Output file
-s_file = pyasm_file.parent / f'{pyasm_file.name}.s'
-
 # Tracking variables used during the loop
 in_asm_fn = 0
 outer_indent = None
 asm_indent = None
-#fn_name = None
+s_file = None
 
 # Main loop
-with open( pyasm_file, 'r' ) as py_fd, open( s_file, 'w' ) as s_fd:
-  
-  # Write the boilerplate at the top of the .s file
-  s_fd.write('.section .text,"ax"\n')
-  s_fd.write('\n')
-  s_fd.write('main:\n')
+with open( pyasm_file, 'r' ) as py_fd:
   
   # Keep reading input lines until there are no more
   while True:
@@ -205,10 +221,13 @@ with open( pyasm_file, 'r' ) as py_fd, open( s_file, 'w' ) as s_fd:
     
     # Next line should be the function signature
     if in_asm_fn == 1:
-      if ln[indent:indent+3] == 'def':
-        in_asm_fn = 2
-        # TODO: GET fn_name HDERE
+      fnm = re_pyfn.match(ln[indent:])
+      if not fnm:
+        in_asm_fn = 0
         continue
+      s_file = SFile( fn2filename( pyasm_file.name, fnm.group(1) ) )
+      in_asm_fn = 2
+      continue
     
     # We're at the start of the asm
     if in_asm_fn == 2:
@@ -221,12 +240,10 @@ with open( pyasm_file, 'r' ) as py_fd, open( s_file, 'w' ) as s_fd:
       # If the indent has changed, we're no longer in the asm
       if indent != asm_indent:
         in_asm_fn = 0
+        s_file.close()
+        print(f'Saved file {s_file.path}')
+        s_file = None
         continue
       
       # Convert the line and write it to the .s file
-      s_fd.write( process_line( ln[indent:].strip() ) )
-  
-  # Finish up the .s file
-  s_fd.write('\n.end\n')
-
-print(f'Saved to {s_file}')
+      s_file.write( process_line( ln[indent:].strip() ) )
