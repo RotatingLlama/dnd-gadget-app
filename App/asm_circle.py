@@ -10,6 +10,9 @@ import time
 _LSL = const( 0b00000 << 11 ) # LSL <Rd>, <Rm>, #<imm5> [ref p282] => data(2, _LSL | Rd | ( Rm <<3 ) | ( imm5 <<6 ) )
 _LSR = const( 0b00001 << 11 ) # LSR <Rd>, <Rm>, #<imm5> [ref p284] => data(2, _LSR | Rd | ( Rm <<3 ) | ( imm5 <<6 ) )
 
+# At least one of Rn, Rm must be a high register with this encoding
+_CMP = const( 0b010001_01 << 8 ) # data(2, _CMP | ( Rn &7) | (( Rn &8)<<3) | ( Rm <<3) ) # cmp( Rn, Rm )
+
 _PARAM_WIDTH  = const(0x00)
 _PARAM_HEIGHT = const(0x04)
 _PARAM_CX     = const(0x08)
@@ -19,6 +22,9 @@ _PARAM_START  = const(0x14)
 _PARAM_END    = const(0x18)
 _PARAM_COLOUR = const(0x1C)
 _PARAM_OUTPUT = const(0x20)
+
+_MAX = const(0x8000_0000)
+_TAU = const(6.283184)
 
 # circle( buf, params )
 # buf = The raw buffer to draw to
@@ -241,22 +247,22 @@ def _asm_arc(r0,r1) -> int:
   #        r1 = X
   #        r2 = Y
   #        r7 = params [NO CLOBBER]
-  #        r8 = Width of display [NO CLOBBER]
-  #        r9 = Height of display [NO CLOBBER]
   #        r12 = Output buffer [NO CLOBBER]
   label(PX)
   push({r0,r1,r2,r3,r4,lr})
   #
   # Check Y is within bounds
-  mov( r4, r9 ) # Display height (px) => r4
+  ldr( r4, [r7,_PARAM_HEIGHT] ) # Display height (px) => r4
   cmp( r2, r4 )
+  #data(2, _CMP | ( 2 &7) | (( 2 &8)<<3) | ( 9 <<3) ) # cmp( r2, r9 ) # Y - display_height
   bge(_PX_END) # End if Y [r2] >= display height[r4]
   cmp( r2, 0 )
   bmi(_PX_END) # Branch if Y negative
   #
   # Check X is within upper bound
-  mov( r4, r8 ) # Display width (px) => r4
+  ldr( r4, [r7,_PARAM_WIDTH] ) # Display width (px) => r4
   cmp( r1, r4 )
+  #data(2, _CMP | ( 1 &7) | (( 1 &8)<<3) | ( 8 <<3) ) # cmp( r1, r8 ) # X - display_height
   bge(_PX_END) # End if X [r1] >= display width[r4]
   cmp( r1, 0 )
   bmi(_PX_END) # Branch if X is negative
@@ -448,24 +454,50 @@ def _asm_arc(r0,r1) -> int:
   b(_OCTS_LOOPSTART)
   #
   label(_OCTS_DONE)
-  pop({r0,r1,r4,r5,r6,r7,pc})
-
+  pop({r0,r1,r4,r5,r6,r7,pc}) #################################
+  
+  
+  ### SUBROUTINE "CHECK_PX" ###
+  #
+  # Octuple a pixel postion, write them to the fb
+  # Input: r0 = oct
+  #        r3 = X (absolute)
+  #        r4 = Y (absolute)
+  label(CHECK_PX)
+  # what oct is the pixel in (get from DRAW_OCTS)
+  # what oct is start in
+  # what oct is end in
+  # are we checking for start, end or both
+  #
+  # if both:
+  # if start is on boundary, check for end only
+  # if end is on bondary, check for start only
+  # is px between or outside start and end
+  # flip sense of the above depending on order of start/end
+  #
+  # if start or end:
+  # calc y boundary
+  # cmp( y, y_bound)
+  # draw or not = start or end  x  above or below x which half
+  
+  # TODO:
+  # A function to pre-calculate m_start and m_end
+  # A function to get y, given x, m
+  # Store which oct start is in (can be none)
+  # Store which oct end is in (can be none)
+  # Implement logic above
   
   
   ### SUBROUTINE "DRAW_OCTS" ###
   #
   # Octuple a pixel postion, write them to the fb
   # Input: r0 = colour
-  #        r1 = X
-  #        r2 = Y
-  #        r5 = Draw byte [NO CLOBBER]
-  #        r6 = Check byte [NO CLOBBER]
-  #        r7 = Params [NO CLOBBER]
-  #        r8 = Width of display [NO CLOBBER]
-  #        r9 = Height of display [NO CLOBBER]
-  #        r10 = CX [NO CLOBBER]
-  #        r11 = CY [NO CLOBBER]
-  #        r12 = Output buffer [NO CLOBBER]
+  #        r1 = X               [NO CLOBBER]
+  #        r2 = Y               [NO CLOBBER]
+  #        r5 = Draw byte       [NO CLOBBER]
+  #        r6 = Check byte      [NO CLOBBER]
+  #        r7 = Params          [NO CLOBBER]
+  #        r12 = Output buffer  [NO CLOBBER]
   # Where X and Y are from the 3rd octant clockwise from TDC
   # i.e. 3 o'clock to 4:30
   label(DRAW_OCTS)
@@ -669,38 +701,26 @@ def _asm_arc(r0,r1) -> int:
   label(CIRCLE)
   push({lr})
   #
-  #
   # Set up registers
-  ldr( r5, [r7,_PARAM_WIDTH] ) # Display width => r5
-  ldr( r6, [r7,_PARAM_HEIGHT] ) # Display height => r6
-  mov( r8, r5 ) # Display width => r8
-  mov( r9, r6 ) # Display height => r9
-  ldr( r5, [r7,_PARAM_CX] ) # cx => r5
-  ldr( r6, [r7,_PARAM_CY] ) # cy => r6
-  #mov( r10, r5 ) # cx => r10
-  #mov( r11, r6 ) # cy => r11
-  ldr( r3, [r7,_PARAM_R] ) # radius => r3
+  ldr( r1, [r7,_PARAM_R] ) # radius => starting x => r1
   ldr( r0, [r7,_PARAM_COLOUR] ) # colour => r0
   #
   # Get the Draw and Check bytes
-  push({r3})
-  bl(CALC_OCTS)
+  bl(CALC_OCTS) # Draw => r2, Check => r3
   mov( r5, r2 ) # Draw byte => r5
   mov( r6, r3 ) # Check byte => r6
-  pop({r3})
   #
-  mov( r1, r3 ) # radius => x => r1 <<<
   mov( r2, 0 )   # 0 => y => r2 <<<
-  # lsr( r3, r3, 4 )
-  data(2, _LSR | 3 | ( 3 <<3 ) | ( 4 <<6 ) ) # r / 16 => t1 => r3 <<<<
+  # lsr( r3, r1, 4 )
+  data(2, _LSR | 3 | ( 1 <<3 ) | ( 4 <<6 ) ) # r / 16 => t1 => r3 <<<<
   label(_CIRCLE_LOOP)
-  cmp( r1, r2 )  # Compare x - y
+  cmp( r1, r2 )     # Compare x - y
   bmi(_CIRCLE_END)  # Branch if negative ( x < y )
   bl(DRAW_OCTS)     # Draw the pixel
   add( r2, 1 )      # y++
   add( r3, r3, r2 ) # t1 += y
   sub( r4, r3, r1 ) # t2 = t1 - x
-  bmi(_CIRCLE_LOOP)    # Branch if negative ( t2 < 0 )
+  bmi(_CIRCLE_LOOP) # Branch if negative ( t2 < 0 )
   mov( r3, r4 )     #  t1 = t2
   sub( r1, 1 )      #  x--
   b(_CIRCLE_LOOP)
@@ -757,15 +777,36 @@ def _asm_arc(r0,r1) -> int:
   mov( r11, r3 )
   mov( r12, r4 )
 
+'''
+_mstart = round( tan( (start/_MAX) * _TAU ) * (1<<22) )
+
+_MAX = (1<<31)
+r0 = start/_MAX
+r0 = r0 * TAU
+r0 = tan(r0)
+r0 = r0 * (1<<22)
+_mstart = int( r0 )
+'''
+
+def int_to_radians( angle:int ) -> float:
+  return (angle/_MAX) * _TAU
+def angle_to_gradient( radians:float ) -> float:
+  return tan( radians )
+def get_y_limit( x:int, angle:float ) -> int:
+  m:float = angle_to_gradient(angle)
+  _m:int = round( m * (1<<22) ) # 0x0040_0000
+  _y = x * _m
+  y = _y >> 22
+  return y
 
 def arc( buf, start:float, end:float ):
   
   if start == end:
     raise ValueError()
   
-  MAX = 0x8000_0000
-  istart = round( start * MAX ) % MAX
-  iend = round( end * MAX ) % MAX
+  #MAX = 0x8000_0000
+  istart = round( start * _MAX ) % _MAX
+  iend = round( end * _MAX ) % _MAX
   
   # Preallocate an array to contain debugging output
   output = array('L', [0]*8 )
@@ -833,7 +874,7 @@ def circle(buf):
 
 def arc_grid(buf):
   
-  MAX = 0x8000_0000
+  #MAX = 0x8000_0000
   
   # Preallocate an array to contain debugging output
   output = array('L', [0]*8 )
@@ -856,8 +897,8 @@ def arc_grid(buf):
         continue
       params[2] = ( start * 15 ) + 7
       params[3] = ( end * 15 ) + 7
-      params[5] = round( start/16 * MAX ) % MAX
-      params[6] = round( end/16 * MAX ) % MAX
+      params[5] = round( start/16 * _MAX ) % _MAX
+      params[6] = round( end/16 * _MAX ) % _MAX
       _asm_arc( buf, params )
 
 async def run():
@@ -866,7 +907,8 @@ async def run():
   hw = HW()
   buf = hw.eink.buf
   
-  arc_grid(buf)
+  arc( buf, 0.2, 0.8 )
+  #arc_grid(buf)
   
   #return
   

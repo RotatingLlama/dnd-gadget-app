@@ -26,18 +26,35 @@ _LDMIA = const( 0b1100_1 << 11 ) # LDMIA <Rn>!, reglist [ref p242] => data(2, _L
 #              nnn # Rn
 #
 # At least one of Rn, Rm must be a high register with this encoding
-_CMP = const( 0b010001_01 << 8 ) # data(2, _CMP | ( Rn &3) | (( Rn &8)<<4) | ( Rm <<3) ) # cmp( Rn, Rm )
+_CMP = const( 0b010001_01 << 8 ) # data(2, _CMP | ( Rn &7) | (( Rn &8)<<3) | ( Rm <<3) ) # cmp( Rn, Rm )
 
 # Add high registers.  At least one must be high, see _CMP above
-_ADD = const( 0b010001_00 << 8 ) # data(2, _ADD | ( Rd &3) | (( Rd &8)<<4) | ( Rm <<3) ) # add( Rd, Rm )
+_ADD = const( 0b010001_00 << 8 ) # data(2, _ADD | ( Rd &7) | (( Rd &8)<<3) | ( Rm <<3) ) # add( Rd, Rm )
 
 # Memory Locations (absolute)
 _ROM_VER = const(0x13)
 _ROM_DATA_TABLE_PTR = const(0x16)
 _HELPER_FN_PTR = const(0x18)
+_SIO_BASE = const(0xd0000000)
 
-# Functions
-_FTAN = const(0x44)
+# Bootrom floating point library functions
+_FMUL = const(0x08) # p138, 58 cycles
+_FDIV = const(0x0c) # p138, 71 cycles
+_FLOAT2INT = const(0x1c) # p138, 40 cycles
+_INT2FLOAT = const(0x2c) # p139, 55 cycles
+_FTAN = const(0x44) # p139, 653 cycles (!)
+#
+# SIO Integer Divider registers
+_SIO_DIV_UDIVIDEND = const(0x060) # Divider unsigned dividend P/q
+_SIO_DIV_UDIVISOR = const(0x064) # Divider unsigned divisor p/Q
+_SIO_DIV_SDIVIDEND = const(0x068) # Divider signed dividend
+_SIO_DIV_SDIVISOR = const(0x06c) # Divider signed divisor
+_SIO_DIV_QUOTIENT = const(0x070) # Divider result quotient
+_SIO_DIV_REMAINDER = const(0x074) # Divider result remainder
+_SIO_DIV_CSR = const(0x078) # Control and status register for divider.
+
+_MAX = const(0x8000_0000)
+_TAU = const(6.283184)
 
 # Check out 'blend mode' for linear interpolation - datasheet p37
 
@@ -173,6 +190,12 @@ def tan_test(r0) -> int:
   data(2, _BLX | ( 2 <<3 ) ) # Run tan function
   str( r0, [ r4, 4 ] ) # Result => buf[1]
 
+def tan( a:float ) -> float:
+  buf = array('f',[a,0]) # Floats
+  tan_test(buf)
+  return buf[1]
+
+# Obsolete, see data_test2() below for better method
 @micropython.asm_thumb
 def data_test() -> int:
   align(4)
@@ -181,6 +204,48 @@ def data_test() -> int:
   data( 4, 0x12345678 )
   label(AFTERDATA)
   ldr( r0, [r1,0] )
+
+@micropython.asm_thumb
+def data_test2() -> int:
+  align(4)
+  data(4, 0xe0004800|( 0 <<8), 0x12345678 ) # Put 0x12345678 into r0
+  # 0x4800 = LDR (literal) : Gets the data into a register [p248]
+  # 0xe000 = B : Branch to PC + 0 [p205]
+
+# Loads the address of the data array ( 0x12345678 , 0x1eadbeef, 0x789abcde ) into r0
+@micropython.asm_thumb
+def data_block() -> int:
+  align(4)
+  data(4,(0xe000a000|( 0 <<8)|(( 3  -1)<<17)), 0x12345678 , 0x1eadbeef, 0x789abcde ) # r0, 3, d0, d1, d2
+  # Rd = Destination register for base address
+  # n = array length: number of 32bit values defined
+  # 0xa000 = ADR : Gets the address of the data into a register
+  # 0xe000 = B : Unconditional branch to PC + imm11 [p205]
+
+# Creates a small scratch pad in memory and puts the address into r0
+@micropython.asm_thumb
+def scratch32() -> int:
+  align(4)
+  data(4,(0xe000a000|( 0 <<8)|(( 4  -1)<<17)), 1,2,3,4 ) # r0, 3, d0, d1, d2, d3
+  # Rd = Destination register for base address
+  # n = array length: number of 32bit values in scratch space
+  # 0xa000 = ADR : Gets the address of the data into a register
+  # 0xe000 = B : Unconditional branch to PC + imm11 [p205]
+
+# Test of storing data on the stack
+# Should return r0 - r1
+@micropython.asm_thumb
+def stack_test(r0,r1):
+  sub( sp, 8 )
+  str( r0, [sp,-8] )
+  str( r1, [sp,-4] )
+  mov( r0, 0xff )   # dummy
+  mov( r1, 0xaa )   # dummy
+  add( r0, r0, r1 ) # dummy
+  ldr( r0, [sp,-8] )
+  ltr( r1, [sp,-4] )
+  sub( r0, r0, r1 )
+  add( sp, 8 )
 
 @micropython.asm_thumb
 def pixeltest(r0):
@@ -208,6 +273,23 @@ def high_add(r0,r1) -> int:
   mov(r8,r1)
   data(2, _ADD | ( 0 &3) | (( 0 &8)<<4) | ( 8 <<3) ) # add( r0, r8 )
 
+@micropython.asm_thumb
+def _idiv( r0, r1 ) -> int:
+  align(4)
+  data(4, 0xe0004800|( 2 <<8), _SIO_BASE ) # Put _SIO_BASE into r2
+  str( r0, [ r2, _SIO_DIV_SDIVIDEND ] )
+  str( r1, [ r2, _SIO_DIV_SDIVISOR ] )
+  nop() # 1
+  nop() # 2
+  nop() # 3
+  nop() # 4
+  nop() # 5
+  nop() # 6
+  nop() # 7
+  nop() # 8
+  #ldr( r1, [ r2, _SIO_DIV_REMAINDER ] )
+  ldr( r0, [ r2, _SIO_DIV_QUOTIENT ] )
+  
 # For circular arcs, having a start and end point.
 # Start and end should not be equal.
 # Calculates which octants of the circle should be checked before drawing,
@@ -380,9 +462,8 @@ def octant_test(r0,r1):
 # 
 def octant( start:float, end:float ):
   
-  MAX = 0x8000_0000
-  start = round( start * MAX ) % MAX
-  end = round( end * MAX ) % MAX
+  start = round( start * _MAX ) % _MAX
+  end = round( end * _MAX ) % _MAX
   print(f'start: 0x{hex(start)}  end: 0x{hex(end)}')
   
   if start == end:
@@ -392,7 +473,26 @@ def octant( start:float, end:float ):
   
   # Draw, Check
   return data & 0xff, data >> 8
-  
+
+def int_to_radians( angle:int ) -> float:
+  return (angle/_MAX) * _TAU
+def angle_to_gradient( radians:float ) -> float:
+  return tan( radians )
+def get_y_limit( x:int, angle:float ) -> int:
+  m:float = angle_to_gradient(angle)
+  _m:int = round( m * (1<<22) ) # 0x0040_0000
+  _y = x * _m
+  y = _y >> 22
+  return y
+
+# Pre-calculate start and end gradients
+# Store which oct (if any) the start and end affect
+# For each checked pixel:
+# if start and end both affect this oct: do special things
+# if start OR end :
+#  calculate y-limit
+#  gt or lt based on start/end and half
+#  => draw or pass
 
 def get_mem_str_len( addr:int ):
   
@@ -423,29 +523,37 @@ def get_mem_string( addr:int, strlen:int=0 ):
   
   return bstr
 
-'''
-# Test all octants
-for start in range(16):
-  for end in range(16):
-    if start == end:
-      continue
-    print(f'start: {start}  end: {end}')
-    draw, check = octant( start/16, end/16 )
-    print(f'Draw: {draw:08b}   Check: {check:08b}')
-    print()
-'''
+def test_all_octants():
+  for start in range(16):
+    for end in range(16):
+      if start == end:
+        continue
+      print(f'start: {start}  end: {end}')
+      draw, check = octant( start/16, end/16 )
+      print(f'Draw: {draw:08b}   Check: {check:08b}')
+      print()
+
+# Generate massive output of 240 valid start/end octant pairings, to test the algo
+#test_all_octants()
 
 # Test of CMP between high registers
 #print( cmp_test( 1234, 1234 ) )
 
 # Test of add from high register
-print( high_add(12,300) )
+#print( high_add(12,300) )
 
-print(hex(pixeltest(13)))
-print(hex(data_test()))
-#addr = data_test()
-#for i in range(8):
-#  print( hex(machine.mem16[ addr + (i*16) ] ))
+#print(hex(pixeltest(13)))
+
+# Test of retrieval of a 32-bit inline integer
+#print(hex(data_test2()))
+
+print(stack_test( 100, 20 ))
+
+# Test of retrieval of the address of an inline array of 32-bit values or scratch space
+#addr = data_block()
+#addr = scratch32()
+#for i in range(4):
+#  print( hex(machine.mem32[ addr + (i*4) ] ))
 
 # Print copyright notice
 buf = array('L',[0]*2) # Unsigned ints
@@ -453,10 +561,10 @@ get_cr(buf)
 print( get_mem_string( *buf ))
 
 # Tan test
-buf = array('f',[0]*2) # Floats
-buf[0] = 1.57 # Input
-tan_test(buf)
-print(buf)
+print( tan(1.57) )
+
+# Integer division test
+print( _idiv( 100, 3 ) )
 
 #pbuf = addressof(buf)
 
