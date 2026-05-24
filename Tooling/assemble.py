@@ -2,6 +2,15 @@
 #
 # T. Lloyd
 # 24 May 2026
+#
+# USAGE:
+# py assembly.py foo.s           -> Outputs foo.py
+# py assemble.py foo.s -o bar.py -> outputs bar.py
+#
+# If a .ident directive containing a Python function signature is placed near
+# the top of the .s file, that function signature will be used in the output.
+# Eg:
+# .ident "my_func( r0, r1 ) -> int"
 
 import sys
 import subprocess
@@ -32,24 +41,42 @@ def err(msg:str):
   print(msg)
   sys.exit()
 
-def assemble( s_file:Path ) -> None:
+# Parse the input args. Return input and output file Paths
+def parse_args( argv:list ) -> tuple[Path|None,Path|None]:
+  
+  # Only input file given, or input file and one other arg
+  if len(argv) in (2,3):
+    in_file = Path(argv[1])
+    return ( in_file, Path(f'{in_file.stem}.py') )
+  
+  # Enough args to maybe be an output file too
+  if len(argv) >= 4:
+    if argv[2] == '-o':
+      return ( Path(argv[1]), Path(argv[3]) )
+  
+  # Default
+  return (None,None)
+
+# Returns the contents of the first .ident directive found, or else None
+def get_ident( s_file:str ) -> str|None:
+  with open( s_file, 'r' ) as fd:
+    while True:
+      line = fd.readline()
+      if not line:
+        return None
+      fsig = re_fsig.match(line)
+      if fsig:
+        return fsig.group(1)
+
+# Main
+def assemble( s_file:Path, out_file:Path ) -> None:
   
   # Sanity
   if not s_file.is_file():
     err('Not a file')
-
-  # Useful bits of the input filename
-  dir = s_file.parent
-  stem = s_file.stem
-
-  # Get the function signature, if present
-  with open( s_file, 'r' ) as fd:
-    line = fd.readline()
-    fsig = re_fsig.match(line)
-    if fsig:
-      f_sig = fsig.group(1)
-    else:
-      f_sig = None
+  
+  # Get the function signature (if any)
+  f_sig = get_ident(str( s_file ))
       
   # Set up intermediate files
   elf_file = tempfile.NamedTemporaryFile( delete=False, delete_on_close=False )
@@ -68,15 +95,14 @@ def assemble( s_file:Path ) -> None:
     err('objcopy failed')
 
   # Main loop
-  out_file = f'{stem}.py'
-  with open( bin_file.name, 'rb' ) as fd_bin, open( out_file, 'w' ) as fd_py:
+  with open( bin_file.name, 'rb' ) as fd_bin, open( out_file, 'w' ) as fd_py: # type: ignore
     
     # Write the top of the output .py file
     fd_py.write(PY_HEADER)
     if f_sig:
       fd_py.write(f'def {f_sig}:\n')
     else:
-      fd_py.write(f'def _{stem}():\n')
+      fd_py.write(f'def _{s_file.stem}():\n')
     
     # Counter for how many opcodes we've packed
     i = 0
@@ -107,16 +133,19 @@ def assemble( s_file:Path ) -> None:
         
 
   # Clean up temp files
-  unlink(elf_file.name)
-  unlink(bin_file.name)
+  unlink(elf_file.name) # type: ignore
+  unlink(bin_file.name) # type: ignore
 
   print(f'Saved to {out_file}')
 
 if __name__ == '__main__':
   
+  # Get the filenames from the args
+  input, output = parse_args( sys.argv )
+  
   # Sanity
-  if len( sys.argv ) <= 1:
+  if not input:
     err('No args')
-
-  # Input file
-  assemble( Path(sys.argv[1]) )
+  
+  # Go
+  assemble( input, output ) # type: ignore

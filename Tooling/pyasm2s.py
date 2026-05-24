@@ -2,10 +2,11 @@
 # Extract that function and save as a .s file, for actual assembly
 #
 # T. Lloyd
-# 23 May 2026
+# 24 May 2026
 
 # TODO:
 # align() directive is not tested
+# Check for gaps in coverage of MP asm_thumb statements
 
 import sys
 from pathlib import Path
@@ -22,7 +23,7 @@ re_comment = re.compile(r'([^#]*)#?(.*)') # Always returns two strings, split by
 re_op_args = re.compile( r'([^\(]+)\((.*)\)' ) # If match, always returns 2 strings.
 re_num = re.compile(r'^(0x[a-fA-F0-9_]+|0b[01_]+|[0-9_]+)$')
 re_brac = re.compile(r'(.*)\[(.*)\]')
-re_pyfn = re.compile(r'def (([a-zA-Z0-9_]+) *\((.*)\))') # If match, returns function signature, name and argstring
+re_pyfn = re.compile(r'def *(([a-zA-Z0-9_]+) *\((.*)\) *(-> *([a-z\,\[\]]+))?):') # If match, returns: signature, name, argstring, (ignore), return_type
 re_const = re.compile(r'([_A-Z0-9]+) *= *const\( *(0x[a-fA-F0-9_]+|0b[01_\]+|[0-9_]+) *\)') # If match, returns constant name and value
 
 # Convenience function for when things go wrong
@@ -52,7 +53,7 @@ def process_data( arg:str ) -> bytearray|None:
 def process_line( line:str, consts:dict[str,str]={} ) -> str:
   
   # Extract comments
-  cg = re_comment.match(line).groups()
+  cg = re_comment.match(line).groups() # type: ignore
   line = cg[0]
   comment = cg[1]
   if comment:
@@ -95,7 +96,7 @@ def process_line( line:str, consts:dict[str,str]={} ) -> str:
   if op == 'data':
     ba = process_data(argstring)
     if ba is None:
-      return '.err @ Invalid data object in MP file\n'
+      return f'.err @ {line} {comment}\n'
     bytelist = []
     for b in ba:
       bytelist.append( f'0x{b:02x}' )
@@ -200,7 +201,7 @@ def process_py_file( pyasm_file:Path ) -> None:
         
         # If we're still in a asm function
         if in_asm_fn == 3:
-          s_file.close()
+          s_file.close() # type: ignore
         
         break
     
@@ -229,7 +230,7 @@ def process_py_file( pyasm_file:Path ) -> None:
       
       # Next line should be the function signature
       if in_asm_fn == 1:
-        fnm = re_pyfn.match(ln[indent:])
+        fnm = re_pyfn.match(ln[indent:]) # signature, name, argstring, (ignore), return_type
         if not fnm:
           in_asm_fn = 0
           continue
@@ -248,12 +249,12 @@ def process_py_file( pyasm_file:Path ) -> None:
         # If the indent has changed, we're no longer in the asm
         if indent != asm_indent:
           in_asm_fn = 0
-          s_file.close()
+          s_file.close() # type: ignore
           s_file = None
           continue
         
         # Convert the line and write it to the .s file
-        s_file.write( process_line( ln[indent:].strip(), consts ) )
+        s_file.write( process_line( ln[indent:].strip(), consts ) ) # type: ignore
 
 if __name__ == '__main__':
   
