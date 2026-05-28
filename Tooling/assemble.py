@@ -1,11 +1,11 @@
 # Take a .s file, assemble it and then convert it into a MicroPython inline assembly function
 #
 # T. Lloyd
-# 24 May 2026
+# 28 May 2026
 #
 # USAGE:
-# py assembly.py foo.s           -> Outputs foo.py
-# py assemble.py foo.s -o bar.py -> outputs bar.py
+# py assembly.py foo.s           -> Compiled .py to stdout
+# py assemble.py foo.s -o bar.py -> Outputs bar.py
 #
 # If a .ident directive containing a Python function signature is placed near
 # the top of the .s file, that function signature will be used in the output.
@@ -46,8 +46,7 @@ def parse_args( argv:list ) -> tuple[Path|None,Path|None]:
   
   # Only input file given, or input file and one other arg
   if len(argv) in (2,3):
-    in_file = Path(argv[1])
-    return ( in_file, Path(f'{in_file.stem}.py') )
+    return ( Path(argv[1]), None )
   
   # Enough args to maybe be an output file too
   if len(argv) >= 4:
@@ -69,7 +68,7 @@ def get_ident( s_file:str ) -> str|None:
         return fsig.group(1)
 
 # Main
-def assemble( s_file:Path, out_file:Path ) -> None:
+def assemble( s_file:Path, out_file:Path|None ) -> None:
   
   # Sanity
   if not s_file.is_file():
@@ -93,16 +92,22 @@ def assemble( s_file:Path, out_file:Path ) -> None:
   objcopy_output = subprocess.run( ( OBJCOPY, *OPJCOPY_FLAGS, elf_file.name, bin_file.name ) )
   if objcopy_output.returncode != 0:
     err('objcopy failed')
-
+  
+  if out_file:
+    fd_py = open( out_file, 'w' )
+    write = fd_py.write
+  else:
+    write = lambda x : print(x,end='')
+  
   # Main loop
-  with open( bin_file.name, 'rb' ) as fd_bin, open( out_file, 'w' ) as fd_py: # type: ignore
+  with open( bin_file.name, 'rb' ) as fd_bin: # type: ignore
     
     # Write the top of the output .py file
-    fd_py.write(PY_HEADER)
+    write(PY_HEADER)
     if f_sig:
-      fd_py.write(f'def {f_sig}:\n')
+      write(f'def {f_sig}:\n')
     else:
-      fd_py.write(f'def _{s_file.stem}():\n')
+      write(f'def _{s_file.stem}():\n')
     
     # Counter for how many opcodes we've packed
     i = 0
@@ -112,7 +117,7 @@ def assemble( s_file:Path, out_file:Path ) -> None:
       op = fd_bin.read(2)
       if len(op) == 0:
         if i > 0:
-          fd_py.write(')\n')
+          write(')\n')
         break
       
       # Get the opcode
@@ -120,23 +125,25 @@ def assemble( s_file:Path, out_file:Path ) -> None:
       
       # Start of line
       if i == 0:
-        fd_py.write(f'  data(2')
+        write(f'  data(2')
         
       # Format the opcode to hex
-      fd_py.write(f',0x{op:04x}')
+      write(f',0x{op:04x}')
       i += 1
       
       # End of line
       if i == PACK:
-        fd_py.write(')\n')
+        write(')\n')
         i = 0
-        
-
+  
   # Clean up temp files
   unlink(elf_file.name) # type: ignore
   unlink(bin_file.name) # type: ignore
-
-  print(f'Saved to {out_file}')
+  
+  #
+  if out_file:
+    fd_py.close()
+    print(f'Saved to {out_file}')
 
 if __name__ == '__main__':
   
@@ -148,4 +155,4 @@ if __name__ == '__main__':
     err('No args')
   
   # Go
-  assemble( input, output ) # type: ignore
+  assemble( input, output ) # pyright: ignore[reportArgumentType]
