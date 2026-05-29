@@ -1,7 +1,7 @@
 # Take a .s file, assemble it and then convert it into a MicroPython inline assembly function
 #
 # T. Lloyd
-# 28 May 2026
+# 29 May 2026
 #
 # USAGE:
 # py assembly.py foo.s           -> Compiled .py to stdout
@@ -103,6 +103,7 @@ def assemble( s_file:Path, out_file:Path|None ) -> None:
   with open( bin_file.name, 'rb' ) as fd_bin: # type: ignore
     
     # Write the top of the output .py file
+    write(f'# Source file: {s_file.name}\n')
     write(PY_HEADER)
     if f_sig:
       write(f'def {f_sig}:\n')

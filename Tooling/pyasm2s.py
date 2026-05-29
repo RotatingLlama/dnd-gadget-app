@@ -2,11 +2,12 @@
 # Extract that function and save as a .s file, for actual assembly
 #
 # T. Lloyd
-# 24 May 2026
+# 29 May 2026
 
 # TODO:
 # align() directive is not tested
 # Check for gaps in coverage of MP asm_thumb statements
+# BUG: Blank comment line (just a #) turns into blank line (no corresponding @)
 
 import sys
 from pathlib import Path
@@ -165,10 +166,11 @@ class SFile:
     if f_sig:
       self.write(f'.ident "{f_sig}"\n')
     self.write('.section .text,"ax"\n')
+    self.write('.global _start\n')
     for c in consts:
       self.write(f'.set {c}, {consts[c]}\n')
     self.write('\n')
-    self.write('main:\n')
+    self.write('_start:\n')
   
   def close(self):
     self.write('\n.end\n')
